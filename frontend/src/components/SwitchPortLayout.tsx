@@ -1,0 +1,242 @@
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Activity, Zap, AlertTriangle } from 'lucide-react';
+
+interface PortInfo {
+  portNumber: number;
+  status: string;
+  speedConfig: string;
+  speedActual: string;
+  flowControlConfig: string;
+  flowControlActual: string;
+  trunk: string;
+  isEnabled: boolean;
+  isConnected: boolean;
+}
+
+interface SwitchPortLayoutProps {
+  ports: PortInfo[];
+  onConfigurePort: (port: number, enable: boolean) => Promise<void>;
+  onRunDiagnostic: (port: number) => Promise<void>;
+}
+
+export default function SwitchPortLayout({ ports, onConfigurePort, onRunDiagnostic }: SwitchPortLayoutProps) {
+  const [selectedPort, setSelectedPort] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const getPortColor = (port: PortInfo) => {
+    if (!port.isEnabled) return 'bg-gray-400';
+    if (!port.isConnected) return 'bg-gray-500';
+    
+    // Check speed for color coding
+    if (port.speedActual.includes('1000') || port.speedActual.includes('1G')) {
+      return 'bg-green-500';
+    } else if (port.speedActual.includes('100')) {
+      return 'bg-orange-500';
+    } else if (port.speedActual.includes('10')) {
+      return 'bg-yellow-500';
+    }
+    
+    return 'bg-gray-500';
+  };
+
+  const getPortIcon = (port: PortInfo) => {
+    if (!port.isEnabled) return null;
+    if (!port.isConnected) return null;
+    
+    if (port.speedActual.includes('1000') || port.speedActual.includes('1G')) {
+      return <Zap className="h-3 w-3 text-white" />;
+    } else if (port.speedActual.includes('100') || port.speedActual.includes('10')) {
+      return <Activity className="h-3 w-3 text-white" />;
+    }
+    
+    return null;
+  };
+
+  const handlePortClick = (port: PortInfo) => {
+    setSelectedPort(port.portNumber);
+  };
+
+  const handleTogglePort = async (port: number, currentlyEnabled: boolean) => {
+    setIsLoading(true);
+    try {
+      await onConfigurePort(port, !currentlyEnabled);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRunDiagnostic = async (port: number) => {
+    setIsLoading(true);
+    try {
+      await onRunDiagnostic(port);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderEthernetPort = (port: PortInfo) => {
+    const isSelected = selectedPort === port.portNumber;
+    
+    return (
+      <div
+        key={port.portNumber}
+        className={`relative cursor-pointer transition-all duration-200 ${
+          isSelected ? 'scale-110 z-10' : ''
+        }`}
+        onClick={() => handlePortClick(port)}
+      >
+        {/* Ethernet port shape */}
+        <div className={`
+          w-12 h-8 rounded-sm border-2 border-gray-300 relative
+          ${getPortColor(port)} 
+          ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+          shadow-sm hover:shadow-md transition-shadow
+        `}>
+          {/* Port number label */}
+          <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-foreground">
+            {port.portNumber}
+          </div>
+          
+          {/* Status icon */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {getPortIcon(port)}
+          </div>
+          
+          {/* LED indicators */}
+          <div className="absolute top-1 right-1 flex flex-col gap-0.5">
+            <div className={`w-1 h-1 rounded-full ${port.isEnabled ? 'bg-blue-400' : 'bg-gray-600'}`} />
+            <div className={`w-1 h-1 rounded-full ${port.isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
+          </div>
+          
+          {/* Ethernet connector notch */}
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3 h-1 bg-gray-600 rounded-t-sm" />
+        </div>
+        
+        {/* Port status text */}
+        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-center w-16">
+          <div className={`font-medium ${port.isConnected ? 'text-green-600' : 'text-gray-500'}`}>
+            {port.isConnected ? port.speedActual : 'Down'}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const selectedPortInfo = ports.find(p => p.portNumber === selectedPort);
+
+  // Arrange ports in 12x2 layout for 24-port switch
+  const topRowPorts = ports.filter(p => p.portNumber <= 12);
+  const bottomRowPorts = ports.filter(p => p.portNumber > 12 && p.portNumber <= 24);
+
+  return (
+    <div className="space-y-6">
+      {/* Switch Visual Layout */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
+            24-Port Gigabit Switch
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
+            {/* Switch body */}
+            <div className="bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-inner">
+              {/* Top row (ports 1-12) */}
+              <div className="flex justify-center gap-2 mb-8">
+                {topRowPorts.map(port => renderEthernetPort(port))}
+              </div>
+              
+              {/* Bottom row (ports 13-24) */}
+              <div className="flex justify-center gap-2">
+                {bottomRowPorts.map(port => renderEthernetPort(port))}
+              </div>
+            </div>
+            
+            {/* Legend */}
+            <div className="mt-6 flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-3 bg-green-500 rounded-sm" />
+                <span>1000 Mbps</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-3 bg-orange-500 rounded-sm" />
+                <span>100 Mbps</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-3 bg-yellow-500 rounded-sm" />
+                <span>10 Mbps</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-3 bg-gray-500 rounded-sm" />
+                <span>Link Down</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-3 bg-gray-400 rounded-sm" />
+                <span>Disabled</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Port Details Panel */}
+      {selectedPortInfo && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Port {selectedPortInfo.portNumber} Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <span className="text-sm font-medium text-muted-foreground">Status</span>
+                <div className={`font-medium ${selectedPortInfo.isEnabled ? 'text-green-600' : 'text-red-500'}`}>
+                  {selectedPortInfo.status}
+                </div>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-muted-foreground">Link Speed</span>
+                <div className="font-medium">{selectedPortInfo.speedActual}</div>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-muted-foreground">Configured Speed</span>
+                <div className="font-medium">{selectedPortInfo.speedConfig}</div>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-muted-foreground">Flow Control</span>
+                <div className="font-medium">{selectedPortInfo.flowControlActual}</div>
+              </div>
+            </div>
+            
+            {selectedPortInfo.trunk && (
+              <div className="mb-4">
+                <span className="text-sm font-medium text-muted-foreground">Trunk</span>
+                <div className="font-medium">{selectedPortInfo.trunk}</div>
+              </div>
+            )}
+            
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleTogglePort(selectedPortInfo.portNumber, selectedPortInfo.isEnabled)}
+                variant={selectedPortInfo.isEnabled ? "destructive" : "default"}
+                disabled={isLoading}
+              >
+                {selectedPortInfo.isEnabled ? 'Disable Port' : 'Enable Port'}
+              </Button>
+              <Button
+                onClick={() => handleRunDiagnostic(selectedPortInfo.portNumber)}
+                variant="outline"
+                disabled={isLoading}
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                Run Diagnostic
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

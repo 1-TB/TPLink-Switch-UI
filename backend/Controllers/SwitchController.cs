@@ -1,0 +1,261 @@
+using Microsoft.AspNetCore.Mvc;
+using TPLinkWebUI.Models;
+using TPLinkWebUI.Services;
+using System.Diagnostics;
+
+namespace TPLinkWebUI.Controllers
+{
+    [ApiController]
+    [Route("api")]
+    public class SwitchController : ControllerBase
+    {
+        private readonly SwitchService _switchService;
+        private readonly ILogger<SwitchController> _logger;
+
+        public SwitchController(SwitchService switchService, ILogger<SwitchController> logger)
+        {
+            _switchService = switchService;
+            _logger = logger;
+        }
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            
+            _logger.LogInformation("Login attempt from {ClientIP} to switch {SwitchHost} with username {Username}", 
+                clientIp, request.Host, request.Username);
+            
+            try
+            {
+                await _switchService.EnsureClientAsync(request);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Login successful for {Username}@{SwitchHost} from {ClientIP} in {ElapsedMs}ms", 
+                    request.Username, request.Host, clientIp, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Login successful" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                
+                _logger.LogError(ex, "Login failed for {Username}@{SwitchHost} from {ClientIP} after {ElapsedMs}ms: {ErrorMessage}", 
+                    request.Username, request.Host, clientIp, stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("health")]
+        public async Task<IActionResult> HealthCheck()
+        {
+            try
+            {
+                // This will test if we can connect and get basic info
+                var systemInfo = await _switchService.GetSystemInfoAsync();
+                return Ok(new { 
+                    status = "healthy", 
+                    connected = true, 
+                    deviceName = systemInfo.DeviceName,
+                    ipAddress = systemInfo.IpAddress,
+                    firmwareVersion = systemInfo.FirmwareVersion,
+                    message = "Successfully connected to switch",
+                    timestamp = DateTime.Now
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { 
+                    status = "unhealthy", 
+                    connected = false, 
+                    message = ex.Message,
+                    timestamp = DateTime.Now
+                });
+            }
+        }
+
+        [HttpPost("test-connection")]
+        public async Task<IActionResult> TestConnection([FromBody] LoginRequest request)
+        {
+            try
+            {
+                // Just test basic connectivity without saving credentials
+                using var client = new Services.TplinkClient($"http://{request.Host}", request.Username, request.Password);
+                var canConnect = await client.TestConnectionAsync();
+                
+                if (!canConnect)
+                {
+                    return BadRequest(new { 
+                        success = false, 
+                        message = $"Cannot reach switch at {request.Host}. Please check the IP address and network connectivity." 
+                    });
+                }
+
+                return Ok(new { 
+                    success = true, 
+                    message = "Connection test successful" 
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { 
+                    success = false, 
+                    message = $"Connection test failed: {ex.Message}" 
+                });
+            }
+        }
+
+        [HttpGet("systeminfo")]
+        public async Task<IActionResult> GetSystemInfo()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogDebug("Getting system information");
+            
+            try
+            {
+                var systemInfo = await _switchService.GetSystemInfoAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Retrieved system info for device {DeviceName} ({IpAddress}) in {ElapsedMs}ms", 
+                    systemInfo.DeviceName, systemInfo.IpAddress, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(systemInfo);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to get system information after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("ports")]
+        public async Task<IActionResult> GetPortInfo()
+        {
+            try
+            {
+                var portInfo = await _switchService.GetPortInfoAsync();
+                return Ok(portInfo);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("ports/configure")]
+        public async Task<IActionResult> ConfigurePort([FromBody] PortConfigRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Configuring port {Port}: Enable={Enable}, Speed={Speed}, FlowControl={FlowControl}", 
+                request.Port, request.Enable, request.Speed, request.FlowControl);
+            
+            try
+            {
+                await _switchService.SetPortConfigAsync(request.Port, request.Enable, request.Speed, request.FlowControl);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port {Port} configured successfully in {ElapsedMs}ms", 
+                    request.Port, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"Port {request.Port} configured successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to configure port {Port} after {ElapsedMs}ms: {ErrorMessage}", 
+                    request.Port, stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("vlans")]
+        public async Task<IActionResult> GetVlanConfiguration()
+        {
+            try
+            {
+                var vlanConfig = await _switchService.GetVlanConfigurationAsync();
+                return Ok(vlanConfig);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpPost("vlans/create")]
+        public async Task<IActionResult> CreateVlan([FromBody] CreateVlanRequest request)
+        {
+            try
+            {
+                await _switchService.CreateVlanAsync(request.VlanId, request.Ports);
+                return Ok(new { success = true, message = $"VLAN {request.VlanId} created successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("vlans/delete")]
+        public async Task<IActionResult> DeleteVlans([FromBody] DeleteVlanRequest request)
+        {
+            try
+            {
+                await _switchService.DeleteVlansAsync(request.VlanIds);
+                return Ok(new { success = true, message = $"VLAN(s) {string.Join(",", request.VlanIds)} deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("diagnostics/cable")]
+        public async Task<IActionResult> RunCableDiagnostics([FromBody] CableDiagnosticRequest request)
+        {
+            try
+            {
+                var diagnostics = await _switchService.RunCableDiagnosticsAsync(request.Ports);
+                return Ok(diagnostics);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("diagnostics/cable/port/{port}")]
+        public async Task<IActionResult> RunSinglePortDiagnostic(int port)
+        {
+            try
+            {
+                var diagnostics = await _switchService.RunCableDiagnosticsAsync(new[] { port });
+                return Ok(diagnostics);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("reboot")]
+        public async Task<IActionResult> RebootSwitch()
+        {
+            try
+            {
+                await _switchService.RebootSwitchAsync();
+                return Ok(new { success = true, message = "Switch reboot initiated" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+    }
+}
