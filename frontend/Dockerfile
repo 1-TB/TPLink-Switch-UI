@@ -1,39 +1,32 @@
 # TP-Link WebUI Frontend Dockerfile
-FROM node:18-alpine AS build
 
+# 1) Build stage
+FROM node:18-alpine AS build
 WORKDIR /app
 
-# Copy package files
+# Copy package files & install all deps (including Vite)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
-# Copy source code
+# Copy source code and build
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Production stage
+# 2) Production stage
 FROM nginx:alpine AS production
 
-# Copy built assets from build stage
+# Copy built assets
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
+# Copy custom nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create non-root user
+# Create non-root user and fix permissions
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+    adduser -S nextjs -u 1001 && \
+    chown -R nextjs:nodejs /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 
-# Change ownership of nginx directories
-RUN chown -R nextjs:nodejs /var/cache/nginx && \
-    chown -R nextjs:nodejs /var/log/nginx && \
-    chown -R nextjs:nodejs /etc/nginx/conf.d
-
-# Switch to non-root user
 USER nextjs
-
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
