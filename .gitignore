@@ -118,6 +118,10 @@ diagnostic-reports/
 .vscode/launch.json
 .vscode/tasks.json
 
+# Claude Code and GitHub Actions
+.claude/
+.github/
+
 # Runtime data
 pids
 *.pid
