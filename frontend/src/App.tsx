@@ -8,6 +8,7 @@ import PortInfoCard from './components/PortInfoCard';
 import SwitchPortLayout from './components/SwitchPortLayout';
 import VlanInfoCard from './components/VlanInfoCard';
 import DiagnosticsCard from './components/DiagnosticsCard';
+import HistoryCard from './components/HistoryCard';
 
 interface SystemInfo {
   deviceName: string;
@@ -65,6 +66,7 @@ function App() {
   const [vlanConfig, setVlanConfig] = useState<VlanConfigResponse | null>(null);
   const [diagnostics, setDiagnostics] = useState<PortDiagnostic[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [selectedPort, setSelectedPort] = useState<number | undefined>();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -340,6 +342,7 @@ function App() {
           { id: 'ports', label: 'Port List' },
           { id: 'vlans', label: 'VLANs' },
           { id: 'diagnostics', label: 'Diagnostics' },
+          { id: 'history', label: 'History' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -373,6 +376,10 @@ function App() {
             ports={portInfo} 
             onConfigurePort={handleConfigurePort}
             onRunDiagnostics={handleRunDiagnostics}
+            onViewHistory={(portNumber) => {
+              setSelectedPort(portNumber);
+              setActiveTab('history');
+            }}
           />
         )}
         
@@ -388,6 +395,10 @@ function App() {
         
         {activeTab === 'diagnostics' && (
           <DiagnosticsCard diagnostics={diagnostics} />
+        )}
+        
+        {activeTab === 'history' && (
+          <HistoryCard selectedPort={selectedPort} />
         )}
       </motion.div>
     </div>

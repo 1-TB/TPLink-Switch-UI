@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using TPLinkWebUI.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TPLinkWebUI.Services
 {
@@ -10,12 +11,15 @@ namespace TPLinkWebUI.Services
     {
         private readonly CredentialsStorage _storage;
         private readonly ILogger<SwitchService> _logger;
+        private readonly IServiceProvider _serviceProvider;
         private TplinkClient? _client;
+        private List<PortInfo>? _lastPortInfo;
 
-        public SwitchService(CredentialsStorage storage, ILogger<SwitchService> logger)
+        public SwitchService(CredentialsStorage storage, ILogger<SwitchService> logger, IServiceProvider serviceProvider)
         {
             _storage = storage;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         public async Task EnsureClientAsync(LoginRequest req)
@@ -129,52 +133,154 @@ namespace TPLinkWebUI.Services
         {
             await EnsureClientFromStorageAsync();
             var systemInfoText = await _client!.GetSystemInfoAsync();
-            return SystemInfoResponse.Parse(systemInfoText);
+            var response = SystemInfoResponse.Parse(systemInfoText);
+            
+            // Log system info to history
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            await historyService.LogSystemInfoAsync(response, "PERIODIC_SNAPSHOT");
+            
+            return response;
         }
 
         public async Task<PortInfoResponse> GetPortInfoAsync()
         {
             await EnsureClientFromStorageAsync();
             var portInfoText = await _client!.GetPortInfoAsync();
-            return PortInfoResponse.Parse(portInfoText);
+            var response = PortInfoResponse.Parse(portInfoText);
+            
+            // Log port info to history
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            
+            // Check for changes from last port info
+            string changeType = "PERIODIC_SNAPSHOT";
+            if (_lastPortInfo != null && HasPortChanges(_lastPortInfo, response.Ports))
+            {
+                changeType = "STATUS_CHANGE";
+            }
+            
+            await historyService.LogPortInfoAsync(response.Ports, _lastPortInfo, changeType);
+            _lastPortInfo = response.Ports.ToList();
+            
+            return response;
         }
 
         public async Task<VlanConfigResponse> GetVlanConfigurationAsync()
         {
             await EnsureClientFromStorageAsync();
             var vlanConfigText = await _client!.GetVlanConfigurationAsync();
-            return VlanConfigResponse.Parse(vlanConfigText);
+            var response = VlanConfigResponse.Parse(vlanConfigText);
+            
+            // Log VLAN configuration to history
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            await historyService.LogVlanInfoAsync(response.Vlans, "PERIODIC_SNAPSHOT");
+            
+            return response;
         }
 
         public async Task SetPortConfigAsync(int port, bool enable, int speed = 1, bool flowControl = false)
         {
             await EnsureClientFromStorageAsync();
+            
+            // Get current port config before change
+            var currentPortInfo = await GetPortInfoAsync();
+            var oldConfig = currentPortInfo.Ports.FirstOrDefault(p => p.PortNumber == port);
+            
             await _client!.SetPortConfigAsync(port, enable, speed, flowControl);
+            
+            // Get new port config after change and log it
+            var newPortInfo = await GetPortInfoAsync();
+            var newConfig = newPortInfo.Ports.FirstOrDefault(p => p.PortNumber == port);
+            
+            if (oldConfig != null && newConfig != null)
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+                await historyService.LogPortConfigChangeAsync(port, oldConfig, newConfig);
+            }
         }
 
         public async Task<CableDiagnosticResponse> RunCableDiagnosticsAsync(int[] ports)
         {
             await EnsureClientFromStorageAsync();
             var result = await _client!.RunCableDiagnosticsAsync(ports);
-            return CableDiagnosticResponse.FromTplinkResult(result);
+            var response = CableDiagnosticResponse.FromTplinkResult(result);
+            
+            // Log cable diagnostics to history
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            await historyService.LogCableDiagnosticsAsync(response.Diagnostics, "MANUAL");
+            
+            return response;
         }
 
         public async Task CreateVlanAsync(int vlanId, int[] ports)
         {
             await EnsureClientFromStorageAsync();
             await _client!.CreatePortBasedVlanAsync(vlanId, ports);
+            
+            // Log VLAN creation
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            
+            var vlanInfo = new VlanInfo
+            {
+                VlanId = vlanId,
+                PortNumbers = ports.ToList(),
+                MemberPorts = string.Join(",", ports)
+            };
+            
+            await historyService.LogVlanChangeAsync(vlanInfo, "VLAN_CREATED", $"Created VLAN {vlanId} with ports: {string.Join(", ", ports)}");
         }
 
         public async Task DeleteVlansAsync(int[] vlanIds)
         {
             await EnsureClientFromStorageAsync();
             await _client!.DeletePortBasedVlanAsync(vlanIds);
+            
+            // Log VLAN deletion
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            
+            foreach (var vlanId in vlanIds)
+            {
+                var vlanInfo = new VlanInfo
+                {
+                    VlanId = vlanId,
+                    PortNumbers = new List<int>(),
+                    MemberPorts = ""
+                };
+                
+                await historyService.LogVlanChangeAsync(vlanInfo, "VLAN_DELETED", $"Deleted VLAN {vlanId}");
+            }
         }
 
         public async Task RebootSwitchAsync()
         {
             await EnsureClientFromStorageAsync();
             await _client!.RebootAsync();
+        }
+
+        private bool HasPortChanges(List<PortInfo> oldPorts, List<PortInfo> newPorts)
+        {
+            if (oldPorts.Count != newPorts.Count) return true;
+            
+            foreach (var newPort in newPorts)
+            {
+                var oldPort = oldPorts.FirstOrDefault(p => p.PortNumber == newPort.PortNumber);
+                if (oldPort == null) return true;
+                
+                if (oldPort.Status != newPort.Status ||
+                    oldPort.SpeedActual != newPort.SpeedActual ||
+                    oldPort.FlowControlActual != newPort.FlowControlActual)
+                {
+                    return true;
+                }
+            }
+            
+            return false;
         }
 
         public void Dispose()

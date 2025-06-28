@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
+import { History } from 'lucide-react';
 
 interface PortInfo {
   portNumber: number;
@@ -17,9 +18,10 @@ interface PortInfoCardProps {
   ports: PortInfo[];
   onConfigurePort: (port: number, enable: boolean) => Promise<void>;
   onRunDiagnostics: (ports: number[]) => Promise<void>;
+  onViewHistory?: (portNumber: number) => void;
 }
 
-export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics }: PortInfoCardProps) {
+export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics, onViewHistory }: PortInfoCardProps) {
   const handleTogglePort = async (port: number, currentlyEnabled: boolean) => {
     await onConfigurePort(port, !currentlyEnabled);
   };
@@ -69,14 +71,27 @@ export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics 
                 {port.trunk && <div>Trunk: {port.trunk}</div>}
               </div>
               
-              <Button
-                size="sm"
-                variant={port.isEnabled ? "destructive" : "default"}
-                onClick={() => handleTogglePort(port.portNumber, port.isEnabled)}
-                className="w-full"
-              >
-                {port.isEnabled ? 'Disable' : 'Enable'}
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant={port.isEnabled ? "destructive" : "default"}
+                  onClick={() => handleTogglePort(port.portNumber, port.isEnabled)}
+                  className="flex-1"
+                >
+                  {port.isEnabled ? 'Disable' : 'Enable'}
+                </Button>
+                {onViewHistory && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onViewHistory(port.portNumber)}
+                    className="px-2"
+                    title="View History"
+                  >
+                    <History className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>

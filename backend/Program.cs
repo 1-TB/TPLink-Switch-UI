@@ -1,4 +1,6 @@
 using TPLinkWebUI.Services;
+using TPLinkWebUI.Data;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Serilog.Events;
 
@@ -16,9 +18,14 @@ Log.Logger = new LoggerConfiguration()
 // Use Serilog for logging
 builder.Host.UseSerilog();
 
+// Add Entity Framework and SQLite
+builder.Services.AddDbContext<SwitchHistoryContext>(options =>
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=switch_history.db"));
+
 // Add services
 builder.Services.AddSingleton<CredentialsStorage>();
 builder.Services.AddSingleton<SwitchService>();
+builder.Services.AddScoped<HistoryService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -35,6 +42,14 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Ensure database is created
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<SwitchHistoryContext>();
+    context.Database.EnsureCreated();
+    Log.Information("Database initialized successfully");
+}
 
 // Add request logging
 app.UseSerilogRequestLogging(options =>
