@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from './components/ui/button';
-import { Sun, Moon, Power, RefreshCw } from 'lucide-react';
+import { Sun, Moon, Power, RefreshCw, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SystemInfoCard from './components/SystemInfoCard';
 import LoginForm from './components/LoginForm';
@@ -70,6 +70,14 @@ function App() {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
 
+  useEffect(() => {
+    const storedLoginState = localStorage.getItem('tplink-logged-in');
+    if (storedLoginState === 'true') {
+      setIsLoggedIn(true);
+      fetchAllData();
+    }
+  }, []);
+
   const handleLogin = async (credentials: { host: string; username: string; password: string }) => {
     setIsLoading(true);
     try {
@@ -96,6 +104,7 @@ function App() {
       const result = await response.json();
       if (result.success) {
         setIsLoggedIn(true);
+        localStorage.setItem('tplink-logged-in', 'true');
         await fetchAllData();
       } else {
         alert('Login failed: ' + result.message);
@@ -112,10 +121,23 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('tplink-logged-in');
+    setSysInfo(null);
+    setPortInfo([]);
+    setVlanConfig(null);
+    setDiagnostics([]);
+  };
+
   const fetchSystemInfo = async () => {
     try {
       const response = await fetch('/api/systeminfo');
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
@@ -123,7 +145,6 @@ function App() {
       setSysInfo(data);
     } catch (error) {
       console.error('Failed to fetch system info:', error);
-      // Don't show alert for system info failures, just log them
       setSysInfo(null);
     }
   };
@@ -132,6 +153,10 @@ function App() {
     try {
       const response = await fetch('/api/ports');
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
@@ -263,6 +288,7 @@ function App() {
         if (result.success) {
           alert('Switch reboot initiated. You will be disconnected.');
           setIsLoggedIn(false);
+          localStorage.removeItem('tplink-logged-in');
         } else {
           alert('Reboot failed: ' + result.message);
         }
@@ -298,6 +324,9 @@ function App() {
           <Button variant="outline" onClick={fetchAllData} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
+          <Button variant="outline" onClick={handleLogout}>
+            <LogOut className="h-4 w-4" />
+          </Button>
           <Button variant="destructive" onClick={handleReboot}>
             <Power className="h-4 w-4" />
           </Button>
@@ -309,7 +338,6 @@ function App() {
         {[
           { id: 'overview', label: 'Overview' },
           { id: 'ports', label: 'Port List' },
-          { id: 'switch', label: 'Switch View' },
           { id: 'vlans', label: 'VLANs' },
           { id: 'diagnostics', label: 'Diagnostics' },
         ].map((tab) => (
@@ -328,8 +356,16 @@ function App() {
       </div>
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        {activeTab === 'overview' && sysInfo && (
-          <SystemInfoCard info={sysInfo} />
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {sysInfo && <SystemInfoCard info={sysInfo} />}
+            <SwitchPortLayout 
+              ports={portInfo} 
+              vlanConfig={vlanConfig}
+              onConfigurePort={handleConfigurePort}
+              onRunDiagnostic={handleRunSinglePortDiagnostic}
+            />
+          </div>
         )}
         
         {activeTab === 'ports' && (
@@ -340,13 +376,6 @@ function App() {
           />
         )}
         
-        {activeTab === 'switch' && (
-          <SwitchPortLayout 
-            ports={portInfo} 
-            onConfigurePort={handleConfigurePort}
-            onRunDiagnostic={handleRunSinglePortDiagnostic}
-          />
-        )}
         
         {activeTab === 'vlans' && vlanConfig && (
           <VlanInfoCard 

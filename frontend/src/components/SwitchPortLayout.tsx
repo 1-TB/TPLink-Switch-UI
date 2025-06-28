@@ -15,13 +15,27 @@ interface PortInfo {
   isConnected: boolean;
 }
 
+interface VlanInfo {
+  vlanId: number;
+  memberPorts: string;
+  portNumbers: number[];
+}
+
+interface VlanConfigResponse {
+  isEnabled: boolean;
+  totalPorts: number;
+  vlanCount: number;
+  vlans: VlanInfo[];
+}
+
 interface SwitchPortLayoutProps {
   ports: PortInfo[];
+  vlanConfig?: VlanConfigResponse | null;
   onConfigurePort: (port: number, enable: boolean) => Promise<void>;
   onRunDiagnostic: (port: number) => Promise<void>;
 }
 
-export default function SwitchPortLayout({ ports, onConfigurePort, onRunDiagnostic }: SwitchPortLayoutProps) {
+export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, onRunDiagnostic }: SwitchPortLayoutProps) {
   const [selectedPort, setSelectedPort] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -82,7 +96,7 @@ export default function SwitchPortLayout({ ports, onConfigurePort, onRunDiagnost
     return (
       <div
         key={port.portNumber}
-        className={`relative cursor-pointer transition-all duration-200 ${
+        className={`relative cursor-pointer transition-all duration-200 group ${
           isSelected ? 'scale-110 z-10' : ''
         }`}
         onClick={() => handlePortClick(port)}
@@ -114,17 +128,33 @@ export default function SwitchPortLayout({ ports, onConfigurePort, onRunDiagnost
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-3 h-1 bg-gray-600 rounded-t-sm" />
         </div>
         
-        {/* Port status text */}
-        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-center w-16">
-          <div className={`font-medium ${port.isConnected ? 'text-green-600' : 'text-gray-500'}`}>
-            {port.isConnected ? port.speedActual : 'Down'}
-          </div>
+        {/* Hover tooltip */}
+        <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
+          Port {port.portNumber}: {port.isConnected ? port.speedActual : 'Down'} ({port.status})
+          {(() => {
+            const portVlans = getPortVlans(port.portNumber);
+            if (portVlans.length > 0) {
+              return (
+                <>
+                  <br />
+                  VLANs: {portVlans.map(v => v.vlanId).join(', ')}
+                </>
+              );
+            }
+            return null;
+          })()}
         </div>
       </div>
     );
   };
 
   const selectedPortInfo = ports.find(p => p.portNumber === selectedPort);
+  
+  // Get VLANs for the selected port
+  const getPortVlans = (portNumber: number) => {
+    if (!vlanConfig || !vlanConfig.vlans) return [];
+    return vlanConfig.vlans.filter(vlan => vlan.portNumbers.includes(portNumber));
+  };
 
   // Arrange ports in 12x2 layout for 24-port switch
   const topRowPorts = ports.filter(p => p.portNumber <= 12);
@@ -216,6 +246,28 @@ export default function SwitchPortLayout({ ports, onConfigurePort, onRunDiagnost
                 <div className="font-medium">{selectedPortInfo.trunk}</div>
               </div>
             )}
+            
+            {/* VLAN Information */}
+            <div className="mb-4">
+              <span className="text-sm font-medium text-muted-foreground">VLANs</span>
+              <div className="mt-1">
+                {(() => {
+                  const portVlans = getPortVlans(selectedPortInfo.portNumber);
+                  if (portVlans.length === 0) {
+                    return <span className="text-muted-foreground text-sm">No VLANs configured</span>;
+                  }
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {portVlans.map(vlan => (
+                        <span key={vlan.vlanId} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          VLAN {vlan.vlanId}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
             
             <div className="flex gap-2">
               <Button

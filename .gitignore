@@ -1,5 +1,7 @@
 # TP-Link WebUI - Git Ignore File
 
+#AI
+CLAUDE.MD
 # Logs and log directories
 logs/
 *.log
