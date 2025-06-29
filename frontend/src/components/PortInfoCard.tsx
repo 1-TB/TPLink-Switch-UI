@@ -45,14 +45,14 @@ export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics,
 
   return (
     <Card className="mt-4">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Port Information</CardTitle>
-        <Button onClick={handleRunDiagnostics} variant="outline" size="sm">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <CardTitle className="text-lg sm:text-xl">Port Information</CardTitle>
+        <Button onClick={handleRunDiagnostics} variant="outline" size="sm" className="w-full sm:w-auto">
           Run Cable Diagnostics
         </Button>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {ports.map((port) => (
             <div
               key={port.portNumber}
@@ -76,7 +76,7 @@ export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics,
                   size="sm"
                   variant={port.isEnabled ? "destructive" : "default"}
                   onClick={() => handleTogglePort(port.portNumber, port.isEnabled)}
-                  className="flex-1"
+                  className="flex-1 text-xs sm:text-sm"
                 >
                   {port.isEnabled ? 'Disable' : 'Enable'}
                 </Button>
@@ -85,7 +85,7 @@ export default function PortInfoCard({ ports, onConfigurePort, onRunDiagnostics,
                     size="sm"
                     variant="outline"
                     onClick={() => onViewHistory(port.portNumber)}
-                    className="px-2"
+                    className="px-2 min-w-0"
                     title="View History"
                   >
                     <History className="h-3 w-3" />

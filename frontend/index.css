@@ -57,3 +57,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Ensure better touch targets on mobile */
+  @media (max-width: 640px) {
+    button {
+      @apply min-h-[44px];
+    }
+    
+    /* Prevent text selection on buttons and interactive elements */
+    button, .cursor-pointer {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    
+    /* Improve scrolling on mobile */
+    .overflow-x-auto {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+  
+  /* Better visual feedback for touch interactions */
+  .touch-friendly {
+    @apply active:scale-95 transition-transform duration-75;
+  }
+}

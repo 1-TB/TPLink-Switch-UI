@@ -89,12 +89,12 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
     const ports = Array.from({ length: vlanConfig.totalPorts }, (_, i) => i + 1);
     
     return (
-      <div className="grid grid-cols-8 gap-2 mt-4">
+      <div className="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-12 gap-1 sm:gap-2 mt-4">
         {ports.map(port => (
           <button
             key={port}
             onClick={() => handlePortSelection(port)}
-            className={`p-2 text-sm border rounded ${
+            className={`p-1 sm:p-2 text-xs sm:text-sm border rounded ${
               selectedPorts.includes(port)
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-background hover:bg-accent'
@@ -108,18 +108,20 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
   };
   return (
     <Card className="mt-4">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>VLAN Configuration</CardTitle>
-        <div className="flex gap-2">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <CardTitle className="text-lg sm:text-xl">VLAN Configuration</CardTitle>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {vlanConfig.isEnabled && (
             <>
               <Button 
                 onClick={() => setShowCreateForm(true)} 
                 size="sm"
                 disabled={isLoading}
+                className="w-full sm:w-auto"
               >
-                <Plus className="h-4 w-4 mr-1" />
-                Add VLAN
+                <Plus className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Add VLAN</span>
+                <span className="sm:hidden">Add</span>
               </Button>
               {selectedVlans.length > 0 && (
                 <Button 
@@ -127,8 +129,9 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
                   variant="destructive" 
                   size="sm"
                   disabled={isLoading}
+                  className="w-full sm:w-auto"
                 >
-                  <Trash2 className="h-4 w-4 mr-1" />
+                  <Trash2 className="h-4 w-4 sm:mr-1" />
                   Delete ({selectedVlans.length})
                 </Button>
               )}
@@ -138,7 +141,7 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
             <div>
               <span className="font-medium">Status:</span>{' '}
               <span className={vlanConfig.isEnabled ? 'text-green-600' : 'text-red-500'}>
@@ -186,14 +189,15 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
                 {renderPortSelector()}
               </div>
               
-              <div className="flex gap-2">
-                <Button onClick={handleCreateVlan} disabled={isLoading}>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button onClick={handleCreateVlan} disabled={isLoading} className="flex-1 sm:flex-none">
                   Create VLAN
                 </Button>
                 <Button 
                   onClick={() => setSelectedPorts([])} 
                   variant="outline"
                   disabled={isLoading}
+                  className="flex-1 sm:flex-none"
                 >
                   Clear Selection
                 </Button>
@@ -208,7 +212,7 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
                 {vlanConfig.vlans.map((vlan) => (
                   <div
                     key={vlan.vlanId}
-                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
+                    className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 border rounded-lg cursor-pointer transition-colors gap-2 sm:gap-0 ${
                       selectedVlans.includes(vlan.vlanId) 
                         ? 'bg-primary/10 border-primary' 
                         : 'hover:bg-accent'
@@ -224,7 +228,7 @@ export default function VlanInfoCard({ vlanConfig, onCreateVlan, onDeleteVlans, 
                       />
                       <span className="font-medium">VLAN {vlan.vlanId}</span>
                     </div>
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-muted-foreground break-all sm:break-normal">
                       Ports: {vlan.memberPorts || 'None'}
                     </div>
                   </div>

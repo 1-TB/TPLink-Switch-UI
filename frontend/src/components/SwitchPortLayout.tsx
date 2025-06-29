@@ -96,20 +96,20 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
     return (
       <div
         key={port.portNumber}
-        className={`relative cursor-pointer transition-all duration-200 group ${
+        className={`relative cursor-pointer transition-all duration-200 group touch-friendly ${
           isSelected ? 'scale-110 z-10' : ''
         }`}
         onClick={() => handlePortClick(port)}
       >
         {/* Ethernet port shape */}
         <div className={`
-          w-12 h-8 rounded-sm border-2 border-gray-300 relative
+          w-8 h-6 sm:w-12 sm:h-8 rounded-sm border-2 border-gray-300 relative
           ${getPortColor(port)} 
-          ${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+          ${isSelected ? 'ring-1 sm:ring-2 ring-blue-500 ring-offset-1 sm:ring-offset-2' : ''}
           shadow-sm hover:shadow-md transition-shadow
         `}>
           {/* Port number label */}
-          <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-foreground">
+          <div className="absolute -top-4 sm:-top-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-foreground">
             {port.portNumber}
           </div>
           
@@ -129,7 +129,7 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
         </div>
         
         {/* Hover tooltip */}
-        <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20">
+        <div className="absolute -top-12 sm:-top-16 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-20 hidden sm:block">
           Port {port.portNumber}: {port.isConnected ? port.speedActual : 'Down'} ({port.status})
           {(() => {
             const portVlans = getPortVlans(port.portNumber);
@@ -199,40 +199,40 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
+          <div className="bg-gray-100 dark:bg-gray-800 p-3 sm:p-6 rounded-lg">
             {/* Switch body */}
-            <div className="bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-inner">
+            <div className="bg-gray-200 dark:bg-gray-700 p-2 sm:p-4 rounded-lg shadow-inner overflow-x-auto">
               {/* Top row (ports 1-12) */}
-              <div className="flex justify-center gap-2 mb-8">
+              <div className="flex justify-center gap-1 sm:gap-2 mb-4 sm:mb-8 min-w-max">
                 {topRowPorts.map(port => renderEthernetPort(port))}
               </div>
               
               {/* Bottom row (ports 13-24) */}
-              <div className="flex justify-center gap-2">
+              <div className="flex justify-center gap-1 sm:gap-2 min-w-max">
                 {bottomRowPorts.map(port => renderEthernetPort(port))}
               </div>
             </div>
             
             {/* Legend */}
-            <div className="mt-6 flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-3 bg-green-500 rounded-sm" />
+            <div className="mt-4 sm:mt-6 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm">
+              <div className="flex items-center gap-1 sm:gap-2">
+                <div className="w-3 h-2 sm:w-4 sm:h-3 bg-green-500 rounded-sm" />
                 <span>1000 Mbps</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-3 bg-orange-500 rounded-sm" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <div className="w-3 h-2 sm:w-4 sm:h-3 bg-orange-500 rounded-sm" />
                 <span>100 Mbps</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-3 bg-yellow-500 rounded-sm" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <div className="w-3 h-2 sm:w-4 sm:h-3 bg-yellow-500 rounded-sm" />
                 <span>10 Mbps</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-3 bg-gray-500 rounded-sm" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <div className="w-3 h-2 sm:w-4 sm:h-3 bg-gray-500 rounded-sm" />
                 <span>Link Down</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-3 bg-gray-400 rounded-sm" />
+              <div className="flex items-center gap-1 sm:gap-2">
+                <div className="w-3 h-2 sm:w-4 sm:h-3 bg-gray-400 rounded-sm" />
                 <span>Disabled</span>
               </div>
             </div>
@@ -247,7 +247,7 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
             <CardTitle>Port {selectedPortInfo.portNumber} Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <div>
                 <span className="text-sm font-medium text-muted-foreground">Status</span>
                 <div className={`font-medium ${selectedPortInfo.isEnabled ? 'text-green-600' : 'text-red-500'}`}>
@@ -297,11 +297,12 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
               </div>
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 onClick={() => handleTogglePort(selectedPortInfo.portNumber, selectedPortInfo.isEnabled)}
                 variant={selectedPortInfo.isEnabled ? "destructive" : "default"}
                 disabled={isLoading}
+                className="flex-1 sm:flex-none"
               >
                 {selectedPortInfo.isEnabled ? 'Disable Port' : 'Enable Port'}
               </Button>
@@ -309,9 +310,11 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
                 onClick={() => handleRunDiagnostic(selectedPortInfo.portNumber)}
                 variant="outline"
                 disabled={isLoading}
+                className="flex-1 sm:flex-none"
               >
-                <AlertTriangle className="h-4 w-4 mr-1" />
-                Run Diagnostic
+                <AlertTriangle className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Run Diagnostic</span>
+                <span className="sm:hidden">Diagnostic</span>
               </Button>
             </div>
           </CardContent>

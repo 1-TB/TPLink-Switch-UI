@@ -410,43 +410,46 @@ const fetchPortInfo = async () => {
   // Show main dashboard
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="container mx-auto p-6">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+      <div className="container mx-auto p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 sm:mb-8 gap-4">
+          <div className="flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
               TP-Link Switch Manager
             </h1>
             {currentUser && (
-              <p className="text-gray-600 dark:text-gray-300 mt-1">
+              <p className="text-gray-600 dark:text-gray-300 mt-1 text-sm sm:text-base">
                 Welcome back, {currentUser.firstName || currentUser.username}
               </p>
             )}
           </div>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-2 sm:space-x-4 flex-wrap">
             <Button
               variant="outline"
               size="sm"
               onClick={handleRefresh}
               disabled={isLoading}
+              className="flex-1 sm:flex-none min-w-0"
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
+              <RefreshCw className={`w-4 h-4 sm:mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={handleReboot}
+              className="flex-1 sm:flex-none min-w-0"
             >
-              <Power className="w-4 h-4 mr-2" />
-              Reboot
+              <Power className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Reboot</span>
             </Button>
             
             <Button
               variant="outline"
               size="sm"
               onClick={() => setDark(!dark)}
+              className="px-3"
             >
               {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </Button>
@@ -455,18 +458,19 @@ const fetchPortInfo = async () => {
               variant="outline"
               size="sm"
               onClick={handleLogout}
+              className="flex-1 sm:flex-none min-w-0"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
+              <LogOut className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
 
-        <div className="mb-8">
-          <nav className="flex space-x-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-sm">
+        <div className="mb-6 sm:mb-8">
+          <nav className="flex flex-wrap gap-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-sm overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview' },
-              { id: 'ports', label: 'Port List' },
+              { id: 'ports', label: 'Ports' },
               { id: 'vlans', label: 'VLANs' },
               { id: 'diagnostics', label: 'Diagnostics' },
               { id: 'history', label: 'History' }
@@ -474,7 +478,7 @@ const fetchPortInfo = async () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                     : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
