@@ -246,8 +246,8 @@ const fetchPortInfo = async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          portNumber,
-          enabled
+          Port: portNumber,
+          Enable: enabled
         })
       });
 

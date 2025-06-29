@@ -410,6 +410,324 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
     </div>
   );
 
+  // Group events by date for timeline display - moved to component level
+  const eventsByDate = useMemo(() => {
+    const grouped = filteredEvents.reduce((acc, event) => {
+      const date = new Date(event.timestamp).toDateString();
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(event);
+      return acc;
+    }, {} as Record<string, typeof filteredEvents>);
+    
+    return Object.entries(grouped)
+      .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+      .slice(0, 30); // Show last 30 days
+  }, [filteredEvents]);
+
+  const renderTimeline = () => {
+
+    return (
+      <div className="space-y-6">
+        {eventsByDate.map(([date, events]) => (
+          <Card key={date}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center space-x-2">
+                <Calendar className="h-5 w-5 text-blue-500" />
+                <span>{new Date(date).toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}</span>
+                <span className="text-sm font-normal bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                  {events.length} events
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                
+                <div className="space-y-4">
+                  {events.map((event, index) => {
+                    const severity = getEventSeverity(event);
+                    const eventTime = new Date(event.timestamp).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+                    
+                    return (
+                      <div key={event.id} className="relative flex items-start space-x-4">
+                        {/* Timeline dot */}
+                        <div className={`relative z-10 flex items-center justify-center w-12 h-12 rounded-full border-4 border-white ${
+                          severity === 'high' ? 'bg-red-100' :
+                          severity === 'medium' ? 'bg-yellow-100' :
+                          'bg-green-100'
+                        }`}>
+                          {getEventIcon(event)}
+                        </div>
+                        
+                        {/* Event content */}
+                        <div className="flex-1 min-w-0 pb-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <h4 className="font-medium text-gray-900">
+                                {'portNumber' in event && `Port ${event.portNumber} - `}
+                                {'deviceName' in event && 'System Update'}
+                                {'vlanName' in event && event.vlanName}
+                                {'testTrigger' in event && 'Cable Test'}
+                              </h4>
+                              {severity === 'high' && (
+                                <AlertTriangle className="h-4 w-4 text-red-500" />
+                              )}
+                            </div>
+                            <span className="text-sm text-gray-500 font-mono">{eventTime}</span>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {event.changeType || ('testTrigger' in event ? event.testTrigger : 'Event')}
+                          </p>
+                          {'status' in event && event.status && (
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                event.status === 'Up' ? 'bg-green-100 text-green-800' :
+                                event.status === 'Down' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {event.status}
+                              </span>
+                            </div>
+                          )}
+                          {'isHealthy' in event && (
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                event.isHealthy ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {event.stateDescription}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        
+        {eventsByDate.length === 0 && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Events Found</h3>
+              <p className="text-gray-600">No events match your current filters.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  const renderAnalytics = () => {
+    if (!analytics) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center py-8 text-muted-foreground">
+              Loading analytics data...
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Timeline Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <TrendingUp className="h-5 w-5 text-blue-500" />
+              <span>Activity Timeline (Last 30 Days)</span>
+            </CardTitle>
+            <CardDescription>Daily event count over time</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <div className="flex items-end justify-between h-full space-x-1">
+                {analytics.timelineData.map((day, index) => {
+                  const maxCount = Math.max(...analytics.timelineData.map(d => d.count));
+                  const height = maxCount > 0 ? (day.count / maxCount) * 100 : 0;
+                  
+                  return (
+                    <div key={index} className="flex-1 flex flex-col items-center group relative">
+                      <div className="flex-1 flex items-end">
+                        <div 
+                          className="w-full bg-blue-500 hover:bg-blue-600 transition-colors rounded-t min-h-[2px]"
+                          style={{ height: `${height}%` }}
+                          title={`${new Date(day.date).toLocaleDateString()}: ${day.count} events`}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2 transform -rotate-45 origin-left whitespace-nowrap">
+                        {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                        {new Date(day.date).toLocaleDateString()}<br/>
+                        {day.count} events
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Event Distribution and Port Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Event Type Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <BarChart3 className="h-5 w-5 text-green-500" />
+                <span>Event Type Distribution</span>
+              </CardTitle>
+              <CardDescription>Breakdown of event types</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {analytics.changeTypeDistribution.slice(0, 8).map((item, index) => {
+                  const colors = [
+                    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500',
+                    'bg-red-500', 'bg-yellow-500', 'bg-pink-500', 'bg-indigo-500'
+                  ];
+                  const color = colors[index % colors.length];
+                  
+                  return (
+                    <div key={item.type} className="flex items-center space-x-3">
+                      <div className={`w-4 h-4 rounded ${color}`}></div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm font-medium">{item.type.replace('_', ' ')}</span>
+                          <span className="text-sm text-gray-600">{item.count} ({item.percentage}%)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full ${color}`}
+                            style={{ width: `${item.percentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Port Activity Heatmap */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Network className="h-5 w-5 text-orange-500" />
+                <span>Port Activity Heatmap</span>
+              </CardTitle>
+              <CardDescription>Event frequency by port</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analytics.portActivity.slice(0, 10).map((port) => {
+                  const maxActivity = Math.max(...analytics.portActivity.map(p => p.eventCount));
+                  const intensity = maxActivity > 0 ? (port.eventCount / maxActivity) * 100 : 0;
+                  
+                  return (
+                    <div key={port.portNumber} className="flex items-center space-x-3">
+                      <div className="w-16 text-sm font-medium text-right">
+                        Port {port.portNumber}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1">
+                          <div className="w-full bg-gray-200 rounded-full h-6 relative">
+                            <div 
+                              className={`h-6 rounded-full transition-all ${
+                                intensity > 75 ? 'bg-red-500' :
+                                intensity > 50 ? 'bg-orange-500' :
+                                intensity > 25 ? 'bg-yellow-500' :
+                                'bg-green-500'
+                              }`}
+                              style={{ width: `${Math.max(intensity, 5)}%` }}
+                            ></div>
+                            <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-700">
+                              {port.eventCount} events
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Last activity: {formatTimestamp(port.lastActivity)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Critical Events Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span>Critical Events Analysis</span>
+            </CardTitle>
+            <CardDescription>Summary of high-priority events</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {analytics.criticalEvents.map((event) => (
+                <div key={event.type} className={`p-4 rounded-lg border ${
+                  event.severity === 'high' ? 'border-red-200 bg-red-50' :
+                  event.severity === 'medium' ? 'border-yellow-200 bg-yellow-50' :
+                  'border-gray-200 bg-gray-50'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-gray-900">{event.type}</h4>
+                      <p className={`text-2xl font-bold ${
+                        event.severity === 'high' ? 'text-red-600' :
+                        event.severity === 'medium' ? 'text-yellow-600' :
+                        'text-gray-600'
+                      }`}>
+                        {event.count}
+                      </p>
+                    </div>
+                    <div className={`p-2 rounded-full ${
+                      event.severity === 'high' ? 'bg-red-100' :
+                      event.severity === 'medium' ? 'bg-yellow-100' :
+                      'bg-gray-100'
+                    }`}>
+                      {event.severity === 'high' ? (
+                        <AlertTriangle className="h-6 w-6 text-red-500" />
+                      ) : event.severity === 'medium' ? (
+                        <Activity className="h-6 w-6 text-yellow-500" />
+                      ) : (
+                        <CheckCircle className="h-6 w-6 text-gray-500" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   const renderEventsList = () => (
     <div className="space-y-3">
       {paginatedEvents.map((event) => {
@@ -621,24 +939,8 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
       <div>
         {activeView === 'overview' && renderOverview()}
         {activeView === 'events' && renderEventsList()}
-        {activeView === 'timeline' && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-center py-8 text-muted-foreground">
-                Timeline view coming soon - will show interactive timeline of events
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {activeView === 'analytics' && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-center py-8 text-muted-foreground">
-                Advanced analytics coming soon - will show trend analysis and predictions
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {activeView === 'timeline' && renderTimeline()}
+        {activeView === 'analytics' && renderAnalytics()}
       </div>
     </div>
   );
