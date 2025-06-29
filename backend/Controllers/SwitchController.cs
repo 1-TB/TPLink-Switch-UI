@@ -11,11 +11,17 @@ namespace TPLinkWebUI.Controllers
     {
         private readonly SwitchService _switchService;
         private readonly ILogger<SwitchController> _logger;
+        private readonly SwitchMonitoringService _monitoringService;
 
-        public SwitchController(SwitchService switchService, ILogger<SwitchController> logger)
+        public SwitchController(SwitchService switchService, ILogger<SwitchController> logger, IServiceProvider serviceProvider)
         {
             _switchService = switchService;
             _logger = logger;
+            
+            // Get the monitoring service from hosted services
+            var hostedServices = serviceProvider.GetServices<IHostedService>();
+            _monitoringService = hostedServices.OfType<SwitchMonitoringService>().FirstOrDefault()
+                ?? throw new InvalidOperationException("SwitchMonitoringService not found");
         }
 
         [HttpPost("login")]
@@ -136,13 +142,25 @@ namespace TPLinkWebUI.Controllers
         [HttpGet("ports")]
         public async Task<IActionResult> GetPortInfo()
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogDebug("Getting port information");
+            
             try
             {
                 var portInfo = await _switchService.GetPortInfoAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Retrieved port info for {PortCount} ports in {ElapsedMs}ms", 
+                    portInfo.Ports?.Count ?? 0, stopwatch.ElapsedMilliseconds);
+                
                 return Ok(portInfo);
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to get port information after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -177,13 +195,25 @@ namespace TPLinkWebUI.Controllers
         [HttpGet("vlans")]
         public async Task<IActionResult> GetVlanConfiguration()
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogDebug("Getting VLAN configuration");
+            
             try
             {
                 var vlanConfig = await _switchService.GetVlanConfigurationAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Retrieved VLAN config with {VlanCount} VLANs in {ElapsedMs}ms", 
+                    vlanConfig.Vlans?.Count ?? 0, stopwatch.ElapsedMilliseconds);
+                
                 return Ok(vlanConfig);
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to get VLAN configuration after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return StatusCode(500, new { error = ex.Message });
             }
         }
@@ -191,13 +221,26 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("vlans/create")]
         public async Task<IActionResult> CreateVlan([FromBody] CreateVlanRequest request)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Creating VLAN {VlanId} with ports: {Ports}", 
+                request.VlanId, string.Join(", ", request.Ports));
+                
             try
             {
                 await _switchService.CreateVlanAsync(request.VlanId, request.Ports);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("VLAN {VlanId} created successfully in {ElapsedMs}ms", 
+                    request.VlanId, stopwatch.ElapsedMilliseconds);
+                
                 return Ok(new { success = true, message = $"VLAN {request.VlanId} created successfully" });
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to create VLAN {VlanId} after {ElapsedMs}ms: {ErrorMessage}", 
+                    request.VlanId, stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }
@@ -205,13 +248,25 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("vlans/delete")]
         public async Task<IActionResult> DeleteVlans([FromBody] DeleteVlanRequest request)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Deleting VLANs: {VlanIds}", string.Join(", ", request.VlanIds));
+                
             try
             {
                 await _switchService.DeleteVlansAsync(request.VlanIds);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("VLANs {VlanIds} deleted successfully in {ElapsedMs}ms", 
+                    string.Join(", ", request.VlanIds), stopwatch.ElapsedMilliseconds);
+                
                 return Ok(new { success = true, message = $"VLAN(s) {string.Join(",", request.VlanIds)} deleted successfully" });
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to delete VLANs {VlanIds} after {ElapsedMs}ms: {ErrorMessage}", 
+                    string.Join(", ", request.VlanIds), stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }
@@ -219,13 +274,25 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("diagnostics/cable")]
         public async Task<IActionResult> RunCableDiagnostics([FromBody] CableDiagnosticRequest request)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Running cable diagnostics for ports: {Ports}", string.Join(", ", request.Ports));
+                
             try
             {
                 var diagnostics = await _switchService.RunCableDiagnosticsAsync(request.Ports);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Cable diagnostics completed for {PortCount} ports in {ElapsedMs}ms", 
+                    request.Ports.Length, stopwatch.ElapsedMilliseconds);
+                
                 return Ok(diagnostics);
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to run cable diagnostics for ports {Ports} after {ElapsedMs}ms: {ErrorMessage}", 
+                    string.Join(", ", request.Ports), stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }
@@ -247,13 +314,41 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("reboot")]
         public async Task<IActionResult> RebootSwitch()
         {
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            _logger.LogWarning("Switch reboot initiated by {ClientIP}", clientIp);
+                
             try
             {
                 await _switchService.RebootSwitchAsync();
+                _logger.LogWarning("Switch reboot command sent successfully from {ClientIP}", clientIp);
+                
                 return Ok(new { success = true, message = "Switch reboot initiated" });
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Failed to reboot switch from {ClientIP}: {ErrorMessage}", clientIp, ex.Message);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("monitoring/status")]
+        public IActionResult GetMonitoringStatus()
+        {
+            try
+            {
+                var status = new
+                {
+                    isRunning = true,
+                    isAuthenticated = _monitoringService.IsAuthenticated,
+                    lastSuccessfulConnection = _monitoringService.LastSuccessfulConnection,
+                    lastCookieRenewal = _monitoringService.LastCookieRenewal
+                };
+
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get monitoring status");
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }

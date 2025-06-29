@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TPLinkWebUI.Models.History;
+using TPLinkWebUI.Models;
 
 namespace TPLinkWebUI.Data
 {
@@ -13,6 +14,10 @@ namespace TPLinkWebUI.Data
         public DbSet<CableDiagnosticHistoryEntry> CableDiagnosticHistory { get; set; }
         public DbSet<SystemInfoHistoryEntry> SystemInfoHistory { get; set; }
         public DbSet<VlanHistoryEntry> VlanHistory { get; set; }
+        
+        // User management
+        public DbSet<User> Users { get; set; }
+        public DbSet<UserSession> UserSessions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -54,6 +59,32 @@ namespace TPLinkWebUI.Data
                 entity.HasIndex(e => e.Timestamp);
                 entity.HasIndex(e => e.ChangeType);
                 entity.HasIndex(e => new { e.VlanId, e.Timestamp });
+            });
+
+            // User configuration
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.Username).IsUnique();
+                entity.HasIndex(e => e.Email).IsUnique();
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => e.IsActive);
+            });
+
+            // User Session configuration
+            modelBuilder.Entity<UserSession>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.SessionToken).IsUnique();
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => e.ExpiresAt);
+                entity.HasIndex(e => e.IsActive);
+                
+                entity.HasOne(e => e.User)
+                    .WithMany(u => u.Sessions)
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

@@ -148,7 +148,7 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
     );
   };
 
-  const selectedPortInfo = ports.find(p => p.portNumber === selectedPort);
+  const selectedPortInfo = ports?.find(p => p.portNumber === selectedPort);
   
   // Get VLANs for the selected port
   const getPortVlans = (portNumber: number) => {
@@ -157,8 +157,36 @@ export default function SwitchPortLayout({ ports, vlanConfig, onConfigurePort, o
   };
 
   // Arrange ports in 12x2 layout for 24-port switch
-  const topRowPorts = ports.filter(p => p.portNumber <= 12);
-  const bottomRowPorts = ports.filter(p => p.portNumber > 12 && p.portNumber <= 24);
+  const topRowPorts = ports ? ports.filter(p => p.portNumber <= 12) : [];
+  const bottomRowPorts = ports ? ports.filter(p => p.portNumber > 12 && p.portNumber <= 24) : [];
+
+  // Show loading state if no ports data
+  if (!ports || ports.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse" />
+              24-Port Gigabit Switch
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg">
+              <div className="bg-gray-200 dark:bg-gray-700 p-4 rounded-lg shadow-inner">
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600 dark:text-gray-300">Loading port information...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

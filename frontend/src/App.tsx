@@ -8,7 +8,9 @@ import PortInfoCard from './components/PortInfoCard';
 import SwitchPortLayout from './components/SwitchPortLayout';
 import VlanInfoCard from './components/VlanInfoCard';
 import DiagnosticsCard from './components/DiagnosticsCard';
-import HistoryCard from './components/HistoryCard';
+import HistoryDashboard from './components/HistoryDashboard';
+import { SetupWizard } from './components/SetupWizard';
+import { UserLogin } from './components/UserLogin';
 
 interface SystemInfo {
   deviceName: string;
@@ -57,9 +59,22 @@ interface PortDiagnostic {
   isDisconnected: boolean;
 }
 
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role: string;
+  lastLoginAt?: string;
+}
+
+type AppState = 'loading' | 'setup' | 'login' | 'dashboard';
+
 function App() {
   const [dark, setDark] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [appState, setAppState] = useState<AppState>('loading');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
   const [portInfo, setPortInfo] = useState<PortInfo[]>([]);
@@ -73,63 +88,72 @@ function App() {
   }, [dark]);
 
   useEffect(() => {
-    const storedLoginState = localStorage.getItem('tplink-logged-in');
-    if (storedLoginState === 'true') {
-      setIsLoggedIn(true);
-      fetchAllData();
-    }
+    checkApplicationState();
   }, []);
 
-  const handleLogin = async (credentials: { host: string; username: string; password: string }) => {
-    setIsLoading(true);
+  const checkApplicationState = async () => {
     try {
-      // First test basic connectivity
-      const testResponse = await fetch('/api/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      });
+      // First check if initial setup is required
+      const setupResponse = await fetch('/api/auth/setup/required');
+      const setupData = await setupResponse.json();
       
-      const testResult = await testResponse.json();
-      if (!testResult.success) {
-        alert('Connection Test Failed: ' + testResult.message);
+      if (setupData.setupRequired) {
+        setAppState('setup');
         return;
       }
 
-      // If connectivity test passes, proceed with login
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      });
-      
-      const result = await response.json();
-      if (result.success) {
-        setIsLoggedIn(true);
-        localStorage.setItem('tplink-logged-in', 'true');
-        await fetchAllData();
-      } else {
-        alert('Login failed: ' + result.message);
+      // Check if user is already authenticated
+      const userResponse = await fetch('/api/auth/me');
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        if (userData.success && userData.user) {
+          setCurrentUser(userData.user);
+          setAppState('dashboard');
+          await fetchAllData();
+          return;
+        }
       }
+
+      // User needs to log in
+      setAppState('login');
     } catch (error) {
-      console.error('Login failed:', error);
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        alert('Cannot connect to the backend server. Please make sure the backend is running.');
-      } else {
-        alert('Login failed: ' + error);
-      }
-    } finally {
-      setIsLoading(false);
+      console.error('Error checking application state:', error);
+      setAppState('login');
     }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('tplink-logged-in');
-    setSysInfo(null);
-    setPortInfo([]);
-    setVlanConfig(null);
-    setDiagnostics([]);
+  const handleSetupComplete = () => {
+    setAppState('login');
+  };
+
+  const handleLoginSuccess = async () => {
+    try {
+      const userResponse = await fetch('/api/auth/me');
+      const userData = await userResponse.json();
+      
+      if (userData.success && userData.user) {
+        setCurrentUser(userData.user);
+        setAppState('dashboard');
+        await fetchAllData();
+      }
+    } catch (error) {
+      console.error('Error after login:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setCurrentUser(null);
+      setAppState('login');
+      setSysInfo(null);
+      setPortInfo([]);
+      setVlanConfig(null);
+      setDiagnostics([]);
+    }
   };
 
   const fetchSystemInfo = async () => {
@@ -144,16 +168,46 @@ function App() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
       const data = await response.json();
-      setSysInfo(data);
+      setSysInfo(data.data || data);
     } catch (error) {
       console.error('Failed to fetch system info:', error);
-      setSysInfo(null);
     }
   };
 
-  const fetchPortInfo = async () => {
+const fetchPortInfo = async () => {
+  try {
+    const response = await fetch('/api/ports');
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        handleLogout();
+        return;
+      }
+      const err = await response.json();
+      throw new Error(err.error || `HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    let portsArray: PortInfo[] = [];
+
+    if (Array.isArray(payload.ports)) {
+      portsArray = payload.ports;
+    } else if (payload.data && Array.isArray(payload.data.ports)) {
+      portsArray = payload.data.ports;
+    } else {
+      console.warn('Unexpected /api/ports response shape:', payload);
+      portsArray = [];
+    }
+
+    setPortInfo(portsArray);
+  } catch (error) {
+    console.error('Failed to fetch port info:', error);
+  }
+};
+
+
+  const fetchVlanConfig = async () => {
     try {
-      const response = await fetch('/api/ports');
+      const response = await fetch('/api/vlans');
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           handleLogout();
@@ -163,244 +217,318 @@ function App() {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
       const data = await response.json();
-      setPortInfo(data.ports || []);
-    } catch (error) {
-      console.error('Failed to fetch port info:', error);
-      setPortInfo([]);
-    }
-  };
-
-  const fetchVlanConfig = async () => {
-    try {
-      const response = await fetch('/api/vlans');
-      const data = await response.json();
-      setVlanConfig(data);
+      setVlanConfig(data.data || data);
     } catch (error) {
       console.error('Failed to fetch VLAN config:', error);
     }
   };
 
   const fetchAllData = async () => {
-    await Promise.all([
-      fetchSystemInfo(),
-      fetchPortInfo(),
-      fetchVlanConfig(),
-    ]);
+    setIsLoading(true);
+    try {
+      await Promise.all([
+        fetchSystemInfo(),
+        fetchPortInfo(),
+        fetchVlanConfig()
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleConfigurePort = async (port: number, enable: boolean) => {
+  const handleRefresh = () => {
+    fetchAllData();
+  };
+
+  const handleConfigurePort = async (portNumber: number, enabled: boolean) => {
     try {
       const response = await fetch('/api/ports/configure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ port, enable, speed: 1, flowControl: false }),
+        body: JSON.stringify({
+          portNumber,
+          enabled
+        })
       });
-      
-      const result = await response.json();
-      if (result.success) {
-        await fetchPortInfo(); // Refresh port info
-      } else {
-        alert('Port configuration failed: ' + result.message);
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+
+      await fetchPortInfo();
     } catch (error) {
-      console.error('Port configuration failed:', error);
-      alert('Port configuration failed: ' + error);
+      console.error('Failed to configure port:', error);
+      alert('Failed to configure port: ' + error);
     }
   };
 
-  const handleRunDiagnostics = async (ports: number[]) => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/diagnostics/cable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ports }),
-      });
-      
-      const data = await response.json();
-      setDiagnostics(data.diagnostics || []);
-      setActiveTab('diagnostics');
-    } catch (error) {
-      console.error('Cable diagnostics failed:', error);
-      alert('Cable diagnostics failed: ' + error);
-    } finally {
-      setIsLoading(false);
+ const handleRunDiagnostics = async (portNumbers: number[]) => {
+  try {
+    const response = await fetch('/api/diagnostics/cable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ports: portNumbers })
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        handleLogout();
+        return;
+      }
+      const err = await response.json();
+      throw new Error(err.message || `HTTP ${response.status}`);
     }
+
+    const payload = await response.json();
+    // pick out the diagnostics array
+    let diagArray: PortDiagnostic[] = [];
+
+    if (Array.isArray(payload.diagnostics)) {
+      diagArray = payload.diagnostics;
+    } else if (payload.data && Array.isArray(payload.data.diagnostics)) {
+      diagArray = payload.data.diagnostics;
+    } else {
+      console.warn('Unexpected /api/diagnostics response shape:', payload);
+    }
+
+    setDiagnostics(diagArray);
+    setActiveTab('diagnostics');
+  } catch (error) {
+    console.error('Failed to run diagnostics:', error);
+    alert('Failed to run diagnostics: ' + error);
+  }
+};
+
+  const handleRunSinglePortDiagnostic = async (portNumber: number) => {
+    await handleRunDiagnostics([portNumber]);
   };
 
-  const handleRunSinglePortDiagnostic = async (port: number) => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/diagnostics/cable/port/${port}`, {
-        method: 'POST',
-      });
-      
-      const data = await response.json();
-      setDiagnostics(data.diagnostics || []);
-      setActiveTab('diagnostics');
-    } catch (error) {
-      console.error('Cable diagnostic failed:', error);
-      alert('Cable diagnostic failed: ' + error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreateVlan = async (vlanId: number, ports: number[]) => {
+  const handleCreateVlan = async (vlanId: number, memberPorts: number[]) => {
     try {
       const response = await fetch('/api/vlans/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vlanId, ports }),
+        body: JSON.stringify({
+          vlanId,
+          memberPorts
+        })
       });
-      
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.message);
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+
+      await fetchVlanConfig();
     } catch (error) {
-      console.error('VLAN creation failed:', error);
-      throw error;
+      console.error('Failed to create VLAN:', error);
+      alert('Failed to create VLAN: ' + error);
     }
   };
 
   const handleDeleteVlans = async (vlanIds: number[]) => {
     try {
       const response = await fetch('/api/vlans/delete', {
-        method: 'POST',
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vlanIds }),
+        body: JSON.stringify({ vlanIds })
       });
-      
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.message);
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+
+      await fetchVlanConfig();
     } catch (error) {
-      console.error('VLAN deletion failed:', error);
-      throw error;
+      console.error('Failed to delete VLANs:', error);
+      alert('Failed to delete VLANs: ' + error);
     }
   };
 
   const handleReboot = async () => {
-    if (confirm('Are you sure you want to reboot the switch? This will disconnect all users.')) {
-      try {
-        const response = await fetch('/api/reboot', { method: 'POST' });
-        const result = await response.json();
-        if (result.success) {
-          alert('Switch reboot initiated. You will be disconnected.');
-          setIsLoggedIn(false);
-          localStorage.removeItem('tplink-logged-in');
-        } else {
-          alert('Reboot failed: ' + result.message);
+    if (!confirm('Are you sure you want to reboot the switch? This will temporarily disconnect all ports.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/reboot', {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleLogout();
+          return;
         }
-      } catch (error) {
-        console.error('Reboot failed:', error);
-        alert('Reboot failed: ' + error);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
+
+      alert('Switch reboot initiated. The switch will be unavailable for a few minutes.');
+    } catch (error) {
+      console.error('Failed to reboot switch:', error);
+      alert('Failed to reboot switch: ' + error);
     }
   };
 
-  if (!isLoggedIn) {
+  // Show loading screen while checking application state
+  if (appState === 'loading') {
     return (
-      <div className="min-h-screen bg-background text-foreground p-6 flex items-center justify-center">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">TP-Link Switch Manager</h1>
-            <p className="text-muted-foreground">Connect to your TP-Link switch to manage it</p>
-          </div>
-          <LoginForm onLogin={handleLogin} isLoading={isLoading} />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">Loading...</p>
         </div>
       </div>
     );
   }
 
+  // Show setup wizard if initial setup is required
+  if (appState === 'setup') {
+    return <SetupWizard onSetupComplete={handleSetupComplete} />;
+  }
+
+  // Show login form if user needs to authenticate
+  if (appState === 'login') {
+    return <UserLogin onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // Show main dashboard
   return (
-    <div className="min-h-screen bg-background text-foreground p-6">
-      <header className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">TP-Link Switch Manager</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setDark(!dark)}>
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-          <Button variant="outline" onClick={fetchAllData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="h-4 w-4" />
-          </Button>
-          <Button variant="destructive" onClick={handleReboot}>
-            <Power className="h-4 w-4" />
-          </Button>
-        </div>
-      </header>
-
-      {/* Navigation Tabs */}
-      <div className="flex space-x-1 mb-6 border-b">
-        {[
-          { id: 'overview', label: 'Overview' },
-          { id: 'ports', label: 'Port List' },
-          { id: 'vlans', label: 'VLANs' },
-          { id: 'diagnostics', label: 'Diagnostics' },
-          { id: 'history', label: 'History' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {sysInfo && <SystemInfoCard info={sysInfo} />}
-            <SwitchPortLayout 
-              ports={portInfo} 
-              vlanConfig={vlanConfig}
-              onConfigurePort={handleConfigurePort}
-              onRunDiagnostic={handleRunSinglePortDiagnostic}
-            />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="container mx-auto p-6">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              TP-Link Switch Manager
+            </h1>
+            {currentUser && (
+              <p className="text-gray-600 dark:text-gray-300 mt-1">
+                Welcome back, {currentUser.firstName || currentUser.username}
+              </p>
+            )}
           </div>
-        )}
-        
-        {activeTab === 'ports' && (
-          <PortInfoCard 
-            ports={portInfo} 
-            onConfigurePort={handleConfigurePort}
-            onRunDiagnostics={handleRunDiagnostics}
-            onViewHistory={(portNumber) => {
-              setSelectedPort(portNumber);
-              setActiveTab('history');
-            }}
-          />
-        )}
-        
-        
-        {activeTab === 'vlans' && vlanConfig && (
-          <VlanInfoCard 
-            vlanConfig={vlanConfig} 
-            onCreateVlan={handleCreateVlan}
-            onDeleteVlans={handleDeleteVlans}
-            onRefresh={fetchVlanConfig}
-          />
-        )}
-        
-        {activeTab === 'diagnostics' && (
-          <DiagnosticsCard diagnostics={diagnostics} />
-        )}
-        
-        {activeTab === 'history' && (
-          <HistoryCard selectedPort={selectedPort} />
-        )}
-      </motion.div>
+          
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReboot}
+            >
+              <Power className="w-4 h-4 mr-2" />
+              Reboot
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDark(!dark)}
+            >
+              {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <nav className="flex space-x-1 bg-white dark:bg-gray-800 p-1 rounded-lg shadow-sm">
+            {[
+              { id: 'overview', label: 'Overview' },
+              { id: 'ports', label: 'Port List' },
+              { id: 'vlans', label: 'VLANs' },
+              { id: 'diagnostics', label: 'Diagnostics' },
+              { id: 'history', label: 'History' }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                    : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {sysInfo && <SystemInfoCard info={sysInfo} />}
+              <SwitchPortLayout 
+                ports={portInfo} 
+                vlanConfig={vlanConfig}
+                onConfigurePort={handleConfigurePort}
+                onRunDiagnostic={handleRunSinglePortDiagnostic}
+              />
+            </div>
+          )}
+          
+          {activeTab === 'ports' && (
+            <PortInfoCard 
+              ports={portInfo} 
+              onConfigurePort={handleConfigurePort}
+              onRunDiagnostics={handleRunDiagnostics}
+              onViewHistory={(portNumber) => {
+                setSelectedPort(portNumber);
+                setActiveTab('history');
+              }}
+            />
+          )}
+          
+          {activeTab === 'vlans' && vlanConfig && (
+            <VlanInfoCard 
+              vlanConfig={vlanConfig} 
+              onCreateVlan={handleCreateVlan}
+              onDeleteVlans={handleDeleteVlans}
+              onRefresh={fetchVlanConfig}
+            />
+          )}
+          
+          {activeTab === 'diagnostics' && (
+            <DiagnosticsCard diagnostics={diagnostics} />
+          )}
+          
+          {activeTab === 'history' && (
+            <HistoryDashboard selectedPort={selectedPort} />
+          )}
+        </motion.div>
+      </div>
     </div>
   );
 }

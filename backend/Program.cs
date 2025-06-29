@@ -23,9 +23,13 @@ builder.Services.AddDbContext<SwitchHistoryContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=switch_history.db"));
 
 // Add services
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 builder.Services.AddSingleton<CredentialsStorage>();
 builder.Services.AddSingleton<SwitchService>();
 builder.Services.AddScoped<HistoryService>();
+builder.Services.AddScoped<UserService>();
+builder.Services.AddHostedService<SwitchMonitoringService>();
+builder.Services.AddHostedService<SessionCleanupService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

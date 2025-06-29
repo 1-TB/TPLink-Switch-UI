@@ -145,7 +145,9 @@ namespace TPLinkWebUI.Services
 
         public async Task<PortInfoResponse> GetPortInfoAsync()
         {
+            var stopwatch = Stopwatch.StartNew();
             await EnsureClientFromStorageAsync();
+            
             var portInfoText = await _client!.GetPortInfoAsync();
             var response = PortInfoResponse.Parse(portInfoText);
             
@@ -158,10 +160,16 @@ namespace TPLinkWebUI.Services
             if (_lastPortInfo != null && HasPortChanges(_lastPortInfo, response.Ports))
             {
                 changeType = "STATUS_CHANGE";
+                _logger.LogInformation("Port status changes detected for {ChangedPorts} ports", 
+                    GetChangedPortNumbers(_lastPortInfo, response.Ports).Count);
             }
             
             await historyService.LogPortInfoAsync(response.Ports, _lastPortInfo, changeType);
             _lastPortInfo = response.Ports.ToList();
+            
+            stopwatch.Stop();
+            _logger.LogDebug("Port info retrieved and logged in {ElapsedMs}ms with change type: {ChangeType}", 
+                stopwatch.ElapsedMilliseconds, changeType);
             
             return response;
         }
@@ -281,6 +289,30 @@ namespace TPLinkWebUI.Services
             }
             
             return false;
+        }
+
+        private List<int> GetChangedPortNumbers(List<PortInfo> oldPorts, List<PortInfo> newPorts)
+        {
+            var changedPorts = new List<int>();
+            
+            foreach (var newPort in newPorts)
+            {
+                var oldPort = oldPorts.FirstOrDefault(p => p.PortNumber == newPort.PortNumber);
+                if (oldPort == null)
+                {
+                    changedPorts.Add(newPort.PortNumber);
+                    continue;
+                }
+                
+                if (oldPort.Status != newPort.Status ||
+                    oldPort.SpeedActual != newPort.SpeedActual ||
+                    oldPort.FlowControlActual != newPort.FlowControlActual)
+                {
+                    changedPorts.Add(newPort.PortNumber);
+                }
+            }
+            
+            return changedPorts;
         }
 
         public void Dispose()
