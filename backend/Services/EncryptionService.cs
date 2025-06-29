@@ -17,11 +17,12 @@ namespace TPLinkWebUI.Services
     {
         private readonly string _encryptionKey;
         private readonly ILogger<EncryptionService> _logger;
+        private readonly string _keyFilePath = "encryption.key";
 
         public EncryptionService(IConfiguration configuration, ILogger<EncryptionService> logger)
         {
-            _encryptionKey = configuration["Encryption:Key"] ?? GenerateRandomKey();
             _logger = logger;
+            _encryptionKey = configuration["Encryption:Key"] ?? GetOrCreatePersistentKey();
         }
 
         public string Encrypt(string plainText)
@@ -131,6 +132,41 @@ namespace TPLinkWebUI.Services
             {
                 _logger.LogError(ex, "Failed to verify password");
                 return false;
+            }
+        }
+
+        private string GetOrCreatePersistentKey()
+        {
+            try
+            {
+                // Try to load existing key
+                if (File.Exists(_keyFilePath))
+                {
+                    var existingKey = File.ReadAllText(_keyFilePath).Trim();
+                    if (!string.IsNullOrEmpty(existingKey))
+                    {
+                        _logger.LogDebug("Using existing encryption key");
+                        return existingKey;
+                    }
+                }
+
+                // Generate new key and save it
+                var newKey = GenerateRandomKey();
+                File.WriteAllText(_keyFilePath, newKey);
+                
+                // Set restrictive file permissions on Unix systems
+                if (Environment.OSVersion.Platform == PlatformID.Unix)
+                {
+                    File.SetUnixFileMode(_keyFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                }
+                
+                _logger.LogInformation("Generated and saved new encryption key");
+                return newKey;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get or create persistent encryption key, using in-memory key");
+                return GenerateRandomKey();
             }
         }
 

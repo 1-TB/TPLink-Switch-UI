@@ -27,10 +27,12 @@ namespace TPLinkWebUI.Services
                 
                 if (encryptedData != null && 
                     encryptedData.TryGetValue("username", out var encryptedUsername) && 
-                    encryptedData.TryGetValue("password", out var encryptedPassword))
+                    encryptedData.TryGetValue("password", out var encryptedPassword) &&
+                    encryptedData.TryGetValue("host", out var encryptedHost))
                 {
                     return new LoginRequest
                     {
+                        Host = _encryptionService.Decrypt(encryptedHost),
                         Username = _encryptionService.Decrypt(encryptedUsername),
                         Password = _encryptionService.Decrypt(encryptedPassword)
                     };
@@ -40,7 +42,22 @@ namespace TPLinkWebUI.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load credentials");
+                _logger.LogError(ex, "Failed to load credentials - corrupted file detected, deleting");
+                
+                // Delete corrupted credentials file
+                try
+                {
+                    if (File.Exists(_filePath))
+                    {
+                        File.Delete(_filePath);
+                        _logger.LogInformation("Corrupted credentials file deleted");
+                    }
+                }
+                catch (Exception deleteEx)
+                {
+                    _logger.LogError(deleteEx, "Failed to delete corrupted credentials file");
+                }
+                
                 return null;
             }
         }
@@ -51,10 +68,11 @@ namespace TPLinkWebUI.Services
             {
                 var encryptedData = new Dictionary<string, string>
                 {
+                    { "host", _encryptionService.Encrypt(credentials.Host) },
                     { "username", _encryptionService.Encrypt(credentials.Username) },
                     { "password", _encryptionService.Encrypt(credentials.Password) },
                     { "created", DateTime.UtcNow.ToString("O") },
-                    { "version", "2.0" }
+                    { "version", "2.1" }
                 };
                 
                 var json = JsonSerializer.Serialize(encryptedData, new JsonSerializerOptions 
