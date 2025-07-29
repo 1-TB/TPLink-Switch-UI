@@ -4,24 +4,39 @@ using TPLinkWebUI.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using TPLinkWebUI.Configuration;
 
 namespace TPLinkWebUI.Services
 {
+    /// <summary>
+    /// Service for managing switch connections and operations
+    /// </summary>
     public class SwitchService
     {
         private readonly CredentialsStorage _storage;
         private readonly ILogger<SwitchService> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly SwitchConfiguration _switchConfig;
         private TplinkClient? _client;
         private List<PortInfo>? _lastPortInfo;
 
-        public SwitchService(CredentialsStorage storage, ILogger<SwitchService> logger, IServiceProvider serviceProvider)
+        public SwitchService(
+            CredentialsStorage storage, 
+            ILogger<SwitchService> logger, 
+            IServiceProvider serviceProvider,
+            IOptions<SwitchConfiguration> switchConfig)
         {
             _storage = storage;
             _logger = logger;
             _serviceProvider = serviceProvider;
+            _switchConfig = switchConfig.Value;
         }
 
+        /// <summary>
+        /// Ensures a valid client connection is available
+        /// </summary>
+        /// <param name="req">Login request with credentials</param>
         public async Task EnsureClientAsync(LoginRequest req)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -33,7 +48,11 @@ namespace TPLinkWebUI.Services
                 _logger.LogInformation("Creating new client connection for {Username}@{Host}", req.Username, req.Host);
                 await _storage.SaveAsync(req);
                 _client?.Dispose();
-                _client = new TplinkClient($"http://{req.Host}", req.Username, req.Password);
+                
+                // Create logger for TplinkClient
+                var clientLogger = _serviceProvider.GetRequiredService<ILogger<TplinkClient>>();
+                _client = new TplinkClient($"http://{req.Host}", req.Username, req.Password, clientLogger, _switchConfig);
+                
                 await _client.LoginAsync();
                 stopwatch.Stop();
                 _logger.LogInformation("New client connection established for {Username}@{Host} in {ElapsedMs}ms", 
@@ -44,7 +63,10 @@ namespace TPLinkWebUI.Services
                 if (_client == null)
                 {
                     _logger.LogDebug("Recreating client from stored credentials for {Username}@{Host}", saved.Username, saved.Host);
-                    _client = new TplinkClient($"http://{saved.Host}", saved.Username, saved.Password);
+                    
+                    // Create logger for TplinkClient
+                    var clientLogger = _serviceProvider.GetRequiredService<ILogger<TplinkClient>>();
+                    _client = new TplinkClient($"http://{saved.Host}", saved.Username, saved.Password, clientLogger, _switchConfig);
                 }
                 
                 if (saved.SessionCookie != null && saved.CookieExpiration > DateTime.Now)
@@ -68,7 +90,7 @@ namespace TPLinkWebUI.Services
                 if (newCookie != null)
                 {
                     saved.SessionCookie = newCookie;
-                    saved.CookieExpiration = DateTime.Now.AddHours(1); // Assume 1 hour session
+                    saved.CookieExpiration = DateTime.Now.AddHours(_switchConfig.SessionCookieExpirationHours);
                     await _storage.SaveAsync(saved);
                     _logger.LogDebug("Updated session cookie for {Username}@{Host}", saved.Username, saved.Host);
                 }
@@ -79,6 +101,9 @@ namespace TPLinkWebUI.Services
             }
         }
 
+        /// <summary>
+        /// Ensures client connection using stored credentials
+        /// </summary>
         private async Task EnsureClientFromStorageAsync()
         {
             var saved = await _storage.LoadAsync();
@@ -107,7 +132,9 @@ namespace TPLinkWebUI.Services
             
             try
             {
-                _client = new TplinkClient($"http://{saved.Host}", saved.Username, saved.Password);
+                // Create logger for TplinkClient
+                var clientLogger = _serviceProvider.GetRequiredService<ILogger<TplinkClient>>();
+                _client = new TplinkClient($"http://{saved.Host}", saved.Username, saved.Password, clientLogger, _switchConfig);
                 
                 // Always try to login fresh to ensure we have a valid session
                 await _client.LoginAsync();
@@ -117,7 +144,7 @@ namespace TPLinkWebUI.Services
                 if (newCookie != null)
                 {
                     saved.SessionCookie = newCookie;
-                    saved.CookieExpiration = DateTime.Now.AddHours(1);
+                    saved.CookieExpiration = DateTime.Now.AddHours(_switchConfig.SessionCookieExpirationHours);
                     await _storage.SaveAsync(saved);
                 }
             }
@@ -125,7 +152,7 @@ namespace TPLinkWebUI.Services
             {
                 _client?.Dispose();
                 _client = null;
-                throw new InvalidOperationException($"Failed to connect to switch at {saved.Host}: {ex.Message}");
+                throw new InvalidOperationException($"Failed to connect to switch at {saved.Host}: {ex.Message}", ex);
             }
         }
 

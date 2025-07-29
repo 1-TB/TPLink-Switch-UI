@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using TPLinkWebUI.Models;
 using TPLinkWebUI.Services;
 using System.Diagnostics;
+using Microsoft.Extensions.Options;
+using TPLinkWebUI.Configuration;
 
 namespace TPLinkWebUI.Controllers
 {
@@ -12,11 +14,13 @@ namespace TPLinkWebUI.Controllers
         private readonly SwitchService _switchService;
         private readonly ILogger<SwitchController> _logger;
         private readonly SwitchMonitoringService _monitoringService;
+        private readonly IServiceProvider _serviceProvider;
 
         public SwitchController(SwitchService switchService, ILogger<SwitchController> logger, IServiceProvider serviceProvider)
         {
             _switchService = switchService;
             _logger = logger;
+            _serviceProvider = serviceProvider;
             
             // Get the monitoring service from hosted services
             var hostedServices = serviceProvider.GetServices<IHostedService>();
@@ -88,7 +92,11 @@ namespace TPLinkWebUI.Controllers
             try
             {
                 // Just test basic connectivity without saving credentials
-                using var client = new Services.TplinkClient($"http://{request.Host}", request.Username, request.Password);
+                // Create logger for TplinkClient
+                var clientLogger = _serviceProvider.GetRequiredService<ILogger<TplinkClient>>();
+                var switchConfig = _serviceProvider.GetRequiredService<IOptions<SwitchConfiguration>>().Value;
+                
+                using var client = new Services.TplinkClient($"http://{request.Host}", request.Username, request.Password, clientLogger, switchConfig);
                 var canConnect = await client.TestConnectionAsync();
                 
                 if (!canConnect)

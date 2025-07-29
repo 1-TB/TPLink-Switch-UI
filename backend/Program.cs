@@ -3,6 +3,7 @@ using TPLinkWebUI.Data;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Serilog.Events;
+using TPLinkWebUI.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +22,11 @@ builder.Host.UseSerilog();
 // Add Entity Framework and SQLite
 builder.Services.AddDbContext<SwitchHistoryContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=switch_history.db"));
+
+// Configure application settings
+builder.Services.Configure<SwitchConfiguration>(builder.Configuration.GetSection("Switch"));
+builder.Services.Configure<SecurityConfiguration>(builder.Configuration.GetSection("Security"));
+builder.Services.Configure<CorsConfiguration>(builder.Configuration.GetSection("CORS"));
 
 // Add services
 builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
