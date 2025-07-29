@@ -4,6 +4,8 @@ using TPLinkWebUI.Services;
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
 using TPLinkWebUI.Configuration;
+using TPLinkWebUI.Validation;
+using TPLinkWebUI.Constants;
 
 namespace TPLinkWebUI.Controllers
 {
@@ -34,8 +36,16 @@ namespace TPLinkWebUI.Controllers
             var stopwatch = Stopwatch.StartNew();
             var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
             
+            // Validate input
+            var validation = InputValidator.ValidateLoginRequest(request.Host, request.Username, request.Password);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("Invalid login request from {ClientIP}: {ValidationMessage}", clientIp, validation.Message);
+                return BadRequest(new { success = false, message = validation.Message });
+            }
+            
             _logger.LogInformation("Login attempt from {ClientIP} to switch {SwitchHost} with username {Username}", 
-                clientIp, request.Host, request.Username);
+                clientIp, InputValidator.SanitizeString(request.Host), InputValidator.SanitizeString(request.Username));
             
             try
             {
@@ -43,7 +53,7 @@ namespace TPLinkWebUI.Controllers
                 stopwatch.Stop();
                 
                 _logger.LogInformation("Login successful for {Username}@{SwitchHost} from {ClientIP} in {ElapsedMs}ms", 
-                    request.Username, request.Host, clientIp, stopwatch.ElapsedMilliseconds);
+                    InputValidator.SanitizeString(request.Username), InputValidator.SanitizeString(request.Host), clientIp, stopwatch.ElapsedMilliseconds);
                 
                 return Ok(new { success = true, message = "Login successful" });
             }
@@ -52,7 +62,7 @@ namespace TPLinkWebUI.Controllers
                 stopwatch.Stop();
                 
                 _logger.LogError(ex, "Login failed for {Username}@{SwitchHost} from {ClientIP} after {ElapsedMs}ms: {ErrorMessage}", 
-                    request.Username, request.Host, clientIp, stopwatch.ElapsedMilliseconds, ex.Message);
+                    InputValidator.SanitizeString(request.Username), InputValidator.SanitizeString(request.Host), clientIp, stopwatch.ElapsedMilliseconds, ex.Message);
                 
                 return BadRequest(new { success = false, message = ex.Message });
             }
@@ -89,6 +99,13 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("test-connection")]
         public async Task<IActionResult> TestConnection([FromBody] LoginRequest request)
         {
+            // Validate input
+            var validation = InputValidator.ValidateLoginRequest(request.Host, request.Username, request.Password);
+            if (!validation.IsValid)
+            {
+                return BadRequest(new { success = false, message = validation.Message });
+            }
+            
             try
             {
                 // Just test basic connectivity without saving credentials
@@ -103,7 +120,7 @@ namespace TPLinkWebUI.Controllers
                 {
                     return BadRequest(new { 
                         success = false, 
-                        message = $"Cannot reach switch at {request.Host}. Please check the IP address and network connectivity." 
+                        message = $"Cannot reach switch at {InputValidator.SanitizeString(request.Host)}. Please check the IP address and network connectivity." 
                     });
                 }
 
@@ -177,6 +194,15 @@ namespace TPLinkWebUI.Controllers
         public async Task<IActionResult> ConfigurePort([FromBody] PortConfigRequest request)
         {
             var stopwatch = Stopwatch.StartNew();
+            
+            // Validate input
+            var validation = InputValidator.ValidatePortConfigRequest(request.Port, request.Speed);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("Invalid port configuration request: {ValidationMessage}", validation.Message);
+                return BadRequest(new { success = false, message = validation.Message });
+            }
+            
             _logger.LogInformation("Configuring port {Port}: Enable={Enable}, Speed={Speed}, FlowControl={FlowControl}", 
                 request.Port, request.Enable, request.Speed, request.FlowControl);
             
@@ -230,6 +256,15 @@ namespace TPLinkWebUI.Controllers
         public async Task<IActionResult> CreateVlan([FromBody] CreateVlanRequest request)
         {
             var stopwatch = Stopwatch.StartNew();
+            
+            // Validate input
+            var validation = InputValidator.ValidateVlanRequest(request.VlanId, request.Ports);
+            if (!validation.IsValid)
+            {
+                _logger.LogWarning("Invalid VLAN creation request: {ValidationMessage}", validation.Message);
+                return BadRequest(new { success = false, message = validation.Message });
+            }
+            
             _logger.LogInformation("Creating VLAN {VlanId} with ports: {Ports}", 
                 request.VlanId, string.Join(", ", request.Ports));
                 
@@ -257,6 +292,15 @@ namespace TPLinkWebUI.Controllers
         public async Task<IActionResult> DeleteVlans([FromBody] DeleteVlanRequest request)
         {
             var stopwatch = Stopwatch.StartNew();
+            
+            // Validate input
+            if (!InputValidator.AreValidVlanIds(request.VlanIds))
+            {
+                var message = $"Invalid VLAN IDs. All VLAN IDs must be between {VlanConstants.MinVlanId} and {VlanConstants.MaxVlanId}.";
+                _logger.LogWarning("Invalid VLAN deletion request: {ValidationMessage}", message);
+                return BadRequest(new { success = false, message });
+            }
+            
             _logger.LogInformation("Deleting VLANs: {VlanIds}", string.Join(", ", request.VlanIds));
                 
             try
@@ -283,6 +327,15 @@ namespace TPLinkWebUI.Controllers
         public async Task<IActionResult> RunCableDiagnostics([FromBody] CableDiagnosticRequest request)
         {
             var stopwatch = Stopwatch.StartNew();
+            
+            // Validate input
+            if (!InputValidator.AreValidPortNumbers(request.Ports))
+            {
+                var message = $"Invalid port numbers. All ports must be between {NetworkConstants.MinPortNumber} and {NetworkConstants.MaxSupportedPorts}.";
+                _logger.LogWarning("Invalid cable diagnostic request: {ValidationMessage}", message);
+                return BadRequest(new { success = false, message });
+            }
+            
             _logger.LogInformation("Running cable diagnostics for ports: {Ports}", string.Join(", ", request.Ports));
                 
             try
@@ -308,6 +361,13 @@ namespace TPLinkWebUI.Controllers
         [HttpPost("diagnostics/cable/port/{port}")]
         public async Task<IActionResult> RunSinglePortDiagnostic(int port)
         {
+            // Validate input
+            if (!InputValidator.IsValidPortNumber(port))
+            {
+                var message = $"Invalid port number {port}. Must be between {NetworkConstants.MinPortNumber} and {NetworkConstants.MaxSupportedPorts}.";
+                return BadRequest(new { success = false, message });
+            }
+            
             try
             {
                 var diagnostics = await _switchService.RunCableDiagnosticsAsync(new[] { port });
