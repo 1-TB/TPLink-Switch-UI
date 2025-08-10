@@ -11,6 +11,8 @@ import DiagnosticsCard from './components/DiagnosticsCard';
 import HistoryDashboard from './components/HistoryDashboard';
 import { SetupWizard } from './components/SetupWizard';
 import { UserLogin } from './components/UserLogin';
+import { useToast } from './components/ToastProvider';
+import { errorHandler, withErrorHandling, handleWarning } from './lib/errorHandler';
 
 interface SystemInfo {
   deviceName: string;
@@ -82,6 +84,8 @@ function App() {
   const [diagnostics, setDiagnostics] = useState<PortDiagnostic[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPort, setSelectedPort] = useState<number | undefined>();
+  
+  const { showSuccess, showError, showWarning } = useToast();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -117,7 +121,7 @@ function App() {
       // User needs to log in
       setAppState('login');
     } catch (error) {
-      console.error('Error checking application state:', error);
+      errorHandler.handleApiError(error, 'Application State Check');
       setAppState('login');
     }
   };
@@ -137,7 +141,7 @@ function App() {
         await fetchAllData();
       }
     } catch (error) {
-      console.error('Error after login:', error);
+      errorHandler.handleApiError(error, 'Login Success Handler');
     }
   };
 
@@ -145,7 +149,7 @@ function App() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (error) {
-      console.error('Logout error:', error);
+      errorHandler.handleApiError(error, 'Logout');
     } finally {
       setCurrentUser(null);
       setAppState('login');
@@ -170,7 +174,7 @@ function App() {
       const data = await response.json();
       setSysInfo(data.data || data);
     } catch (error) {
-      console.error('Failed to fetch system info:', error);
+      errorHandler.handleApiError(error, 'System Info Fetch');
     }
   };
 
@@ -194,13 +198,13 @@ const fetchPortInfo = async () => {
     } else if (payload.data && Array.isArray(payload.data.ports)) {
       portsArray = payload.data.ports;
     } else {
-      console.warn('Unexpected /api/ports response shape:', payload);
+      handleWarning('Unexpected /api/ports response shape', 'Port Info Fetch');
       portsArray = [];
     }
 
     setPortInfo(portsArray);
   } catch (error) {
-    console.error('Failed to fetch port info:', error);
+    errorHandler.handleApiError(error, 'Port Info Fetch');
   }
 };
 
@@ -219,7 +223,7 @@ const fetchPortInfo = async () => {
       const data = await response.json();
       setVlanConfig(data.data || data);
     } catch (error) {
-      console.error('Failed to fetch VLAN config:', error);
+      errorHandler.handleApiError(error, 'VLAN Config Fetch');
     }
   };
 
@@ -260,10 +264,11 @@ const fetchPortInfo = async () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
+      showSuccess(`Port ${portNumber} ${enabled ? 'enabled' : 'disabled'} successfully`);
       await fetchPortInfo();
     } catch (error) {
-      console.error('Failed to configure port:', error);
-      alert('Failed to configure port: ' + error);
+      const message = errorHandler.handleApiError(error, 'Port Configuration');
+      showError(`Failed to configure port ${portNumber}: ${message}`);
     }
   };
 
@@ -293,14 +298,15 @@ const fetchPortInfo = async () => {
     } else if (payload.data && Array.isArray(payload.data.diagnostics)) {
       diagArray = payload.data.diagnostics;
     } else {
-      console.warn('Unexpected /api/diagnostics response shape:', payload);
+      handleWarning('Unexpected /api/diagnostics response shape', 'Diagnostics');
     }
 
     setDiagnostics(diagArray);
     setActiveTab('diagnostics');
+    showSuccess(`Cable diagnostics completed for ${portNumbers.length} port(s)`);
   } catch (error) {
-    console.error('Failed to run diagnostics:', error);
-    alert('Failed to run diagnostics: ' + error);
+    const message = errorHandler.handleApiError(error, 'Cable Diagnostics');
+    showError(`Failed to run diagnostics: ${message}`);
   }
 };
 
@@ -328,10 +334,11 @@ const fetchPortInfo = async () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
+      showSuccess(`VLAN ${vlanId} created successfully`);
       await fetchVlanConfig();
     } catch (error) {
-      console.error('Failed to create VLAN:', error);
-      alert('Failed to create VLAN: ' + error);
+      const message = errorHandler.handleApiError(error, 'VLAN Creation');
+      showError(`Failed to create VLAN: ${message}`);
     }
   };
 
@@ -352,10 +359,11 @@ const fetchPortInfo = async () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
+      showSuccess(`${vlanIds.length} VLAN(s) deleted successfully`);
       await fetchVlanConfig();
     } catch (error) {
-      console.error('Failed to delete VLANs:', error);
-      alert('Failed to delete VLANs: ' + error);
+      const message = errorHandler.handleApiError(error, 'VLAN Deletion');
+      showError(`Failed to delete VLANs: ${message}`);
     }
   };
 
@@ -378,10 +386,10 @@ const fetchPortInfo = async () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
-      alert('Switch reboot initiated. The switch will be unavailable for a few minutes.');
+      showSuccess('Switch reboot initiated. The switch will be unavailable for a few minutes.');
     } catch (error) {
-      console.error('Failed to reboot switch:', error);
-      alert('Failed to reboot switch: ' + error);
+      const message = errorHandler.handleApiError(error, 'Switch Reboot');
+      showError(`Failed to reboot switch: ${message}`);
     }
   };
 
