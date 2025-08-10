@@ -222,18 +222,24 @@ namespace TPLinkWebUI.Controllers
         public async Task<IActionResult> CreateVlan([FromBody] CreateVlanRequest request)
         {
             var stopwatch = Stopwatch.StartNew();
-            _logger.LogInformation("Creating VLAN {VlanId} with ports: {Ports}", 
-                request.VlanId, string.Join(", ", request.Ports));
+            
+            // Support both legacy (Ports) and new (TaggedPorts/UntaggedPorts) request formats
+            var taggedPorts = request.TaggedPorts?.Length > 0 ? request.TaggedPorts : Array.Empty<int>();
+            var untaggedPorts = request.UntaggedPorts?.Length > 0 ? request.UntaggedPorts : request.Ports ?? Array.Empty<int>();
+            var allPorts = taggedPorts.Concat(untaggedPorts).ToArray();
+            
+            _logger.LogInformation("Creating VLAN {VlanId} ({VlanName}) with tagged ports: [{TaggedPorts}] and untagged ports: [{UntaggedPorts}]", 
+                request.VlanId, request.VlanName, string.Join(", ", taggedPorts), string.Join(", ", untaggedPorts));
                 
             try
             {
-                await _switchService.CreateVlanAsync(request.VlanId, request.Ports);
+                await _switchService.CreateVlanAsync(request.VlanId, request.VlanName, taggedPorts, untaggedPorts);
                 stopwatch.Stop();
                 
-                _logger.LogInformation("VLAN {VlanId} created successfully in {ElapsedMs}ms", 
-                    request.VlanId, stopwatch.ElapsedMilliseconds);
+                _logger.LogInformation("VLAN {VlanId} ({VlanName}) created successfully in {ElapsedMs}ms", 
+                    request.VlanId, request.VlanName, stopwatch.ElapsedMilliseconds);
                 
-                return Ok(new { success = true, message = $"VLAN {request.VlanId} created successfully" });
+                return Ok(new { success = true, message = $"VLAN {request.VlanId} ({request.VlanName}) created successfully" });
             }
             catch (Exception ex)
             {
@@ -266,6 +272,33 @@ namespace TPLinkWebUI.Controllers
                 stopwatch.Stop();
                 _logger.LogError(ex, "Failed to delete VLANs {VlanIds} after {ElapsedMs}ms: {ErrorMessage}", 
                     string.Join(", ", request.VlanIds), stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("vlans/pvid")]
+        public async Task<IActionResult> SetPvid([FromBody] SetPvidRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting PVID {Pvid} for ports: {Ports}", 
+                request.Pvid, string.Join(", ", request.Ports));
+                
+            try
+            {
+                await _switchService.SetPvidAsync(request.Ports, request.Pvid);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("PVID {Pvid} set successfully for ports {Ports} in {ElapsedMs}ms", 
+                    request.Pvid, string.Join(", ", request.Ports), stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"PVID {request.Pvid} set successfully for ports {string.Join(",", request.Ports)}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set PVID {Pvid} for ports {Ports} after {ElapsedMs}ms: {ErrorMessage}", 
+                    request.Pvid, string.Join(", ", request.Ports), stopwatch.ElapsedMilliseconds, ex.Message);
                 
                 return BadRequest(new { success = false, message = ex.Message });
             }
