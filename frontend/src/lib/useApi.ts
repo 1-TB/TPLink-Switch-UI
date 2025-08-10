@@ -191,12 +191,19 @@ export const useApi = () => {
     }, 'Cable Diagnostics');
   }, [checkAuthAndLogout, showSuccess]);
 
-  const createVlan = useCallback(async (vlanId: number, memberPorts: number[], onLogout: () => void) => {
+  const createVlan = useCallback(async (vlanId: number, vlanName: string, taggedPorts: number[], untaggedPorts: number[], onLogout: () => void) => {
     return withErrorHandling(async () => {
       const response = await fetch('/api/vlans/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vlanId, memberPorts })
+        body: JSON.stringify({ 
+          vlanId, 
+          vlanName,
+          taggedPorts, 
+          untaggedPorts,
+          // Include legacy ports field for backwards compatibility
+          ports: untaggedPorts
+        })
       });
 
       if (!response.ok) {
@@ -205,7 +212,8 @@ export const useApi = () => {
         throw new Error(errorData.message || `HTTP ${response.status}`);
       }
 
-      showSuccess(`VLAN ${vlanId} created successfully`);
+      const vlanDisplayName = vlanName ? `${vlanId} (${vlanName})` : vlanId.toString();
+      showSuccess(`VLAN ${vlanDisplayName} created successfully`);
       await fetchVlanConfig(onLogout);
     }, 'VLAN Creation');
   }, [checkAuthAndLogout, showSuccess, fetchVlanConfig]);

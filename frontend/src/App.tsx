@@ -52,8 +52,8 @@ function App() {
     api.runDiagnostics([portNumber], auth.handleLogout);
   };
 
-  const handleCreateVlan = (vlanId: number, memberPorts: number[]) => {
-    api.createVlan(vlanId, memberPorts, auth.handleLogout);
+  const handleCreateVlan = (vlanId: number, vlanName: string, taggedPorts: number[], untaggedPorts: number[]) => {
+    api.createVlan(vlanId, vlanName, taggedPorts, untaggedPorts, auth.handleLogout);
   };
 
   const handleDeleteVlans = (vlanIds: number[]) => {

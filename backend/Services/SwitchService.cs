@@ -226,21 +226,31 @@ namespace TPLinkWebUI.Services
 
         public async Task CreateVlanAsync(int vlanId, int[] ports)
         {
+            // For backwards compatibility, treat all ports as untagged
+            await CreateVlanAsync(vlanId, string.Empty, Array.Empty<int>(), ports);
+        }
+
+        public async Task CreateVlanAsync(int vlanId, string vlanName, int[] taggedPorts, int[] untaggedPorts)
+        {
             await EnsureClientFromStorageAsync();
-            await _client!.CreatePortBasedVlanAsync(vlanId, ports);
+            await _client!.Create8021QVlanAsync(vlanId, vlanName, taggedPorts, untaggedPorts);
             
             // Log VLAN creation
             using var scope = _serviceProvider.CreateScope();
             var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
             
+            var allPorts = (taggedPorts ?? Array.Empty<int>()).Concat(untaggedPorts ?? Array.Empty<int>()).ToList();
             var vlanInfo = new VlanInfo
             {
                 VlanId = vlanId,
-                PortNumbers = ports.ToList(),
-                MemberPorts = string.Join(",", ports)
+                VlanName = vlanName ?? $"VLAN{vlanId}",
+                TaggedPorts = (taggedPorts ?? Array.Empty<int>()).ToList(),
+                UntaggedPorts = (untaggedPorts ?? Array.Empty<int>()).ToList(),
+                PortNumbers = allPorts,
+                MemberPorts = string.Join(",", allPorts)
             };
             
-            await historyService.LogVlanChangeAsync(vlanInfo, "VLAN_CREATED", $"Created VLAN {vlanId} with ports: {string.Join(", ", ports)}");
+            await historyService.LogVlanChangeAsync(vlanInfo, "VLAN_CREATED", $"Created VLAN {vlanId} ({vlanName}) with tagged ports: [{string.Join(", ", taggedPorts ?? Array.Empty<int>())}] and untagged ports: [{string.Join(", ", untaggedPorts ?? Array.Empty<int>())}]");
         }
 
         public async Task DeleteVlansAsync(int[] vlanIds)
@@ -263,6 +273,28 @@ namespace TPLinkWebUI.Services
                 
                 await historyService.LogVlanChangeAsync(vlanInfo, "VLAN_DELETED", $"Deleted VLAN {vlanId}");
             }
+        }
+
+        public async Task SetPvidAsync(int[] ports, int pvid)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPvidAsync(ports, pvid);
+            
+            // Log PVID change using VlanChangeAsync
+            using var scope = _serviceProvider.CreateScope();
+            var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            
+            // Create a dummy VLAN info for logging PVID changes
+            var vlanInfo = new VlanInfo
+            {
+                VlanId = pvid,
+                VlanName = $"PVID_{pvid}",
+                PortNumbers = ports.ToList(),
+                MemberPorts = string.Join(",", ports)
+            };
+            
+            var message = $"Set PVID {pvid} for ports: {string.Join(", ", ports)}";
+            await historyService.LogVlanChangeAsync(vlanInfo, "PVID_CHANGED", message);
         }
 
         public async Task RebootSwitchAsync()
