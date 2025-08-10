@@ -31,7 +31,7 @@ interface DashboardProps {
   onConfigurePort: (portNumber: number, enabled: boolean) => void;
   onRunDiagnostics: (portNumbers: number[]) => void;
   onRunSinglePortDiagnostic: (portNumber: number) => void;
-  onCreateVlan: (vlanId: number, memberPorts: number[]) => void;
+  onCreateVlan: (vlanId: number, vlanName: string, taggedPorts: number[], untaggedPorts: number[]) => void;
   onDeleteVlans: (vlanIds: number[]) => void;
   onRefreshVlans: () => void;
 }
