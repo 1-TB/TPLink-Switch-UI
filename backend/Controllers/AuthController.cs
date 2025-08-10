@@ -221,14 +221,34 @@ public class AuthController : ControllerBase
                 return BadRequest(new { success = false, message = "Initial setup must be completed first" });
             }
 
-            // TODO: Add authorization check - only admins should be able to create new users
-            // For now, allow registration if setup is complete
+            // Authorization check - only admins should be able to create new users
+            var sessionToken = Request.Cookies["session_token"] ?? 
+                              Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+
+            if (string.IsNullOrEmpty(sessionToken))
+            {
+                return Unauthorized(new { success = false, message = "Authentication required" });
+            }
+
+            var currentUser = await _userService.ValidateSessionAsync(sessionToken);
+            if (currentUser == null)
+            {
+                return Unauthorized(new { success = false, message = "Invalid or expired session" });
+            }
+
+            if (currentUser.Role != UserRole.Admin)
+            {
+                return Forbid("Only administrators can create new users");
+            }
 
             var result = await _userService.CreateUserAsync(request);
             if (!result.Success)
             {
                 return BadRequest(new { success = false, message = result.Message });
             }
+
+            _logger.LogInformation("User {NewUsername} created by admin {AdminUsername}", 
+                request.Username, currentUser.Username);
 
             return Ok(new { 
                 success = true, 

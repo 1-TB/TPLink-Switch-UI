@@ -6,6 +6,8 @@ import {
   TrendingUp, AlertTriangle, CheckCircle, Calendar, BarChart3, 
   Eye, Download, ChevronDown, ChevronUp
 } from 'lucide-react';
+import { errorHandler } from '../lib/errorHandler';
+import { useToast } from './ToastProvider';
 
 // Enhanced type definitions
 interface BaseHistoryEntry {
@@ -88,6 +90,9 @@ const defaultFilters: FilterOptions = {
 };
 
 export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps) {
+  // Hooks
+  const { showError } = useToast();
+  
   // State management
   const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'analytics' | 'events'>('overview');
   const [isLoading, setIsLoading] = useState(false);
@@ -137,7 +142,8 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
       setAllEvents(combinedEvents);
       generateAnalytics(combinedEvents);
     } catch (error) {
-      console.error('Failed to fetch history data:', error);
+      const message = errorHandler.handleApiError(error, 'History Data Fetch');
+      showError(`Failed to fetch history data: ${message}`);
     } finally {
       setIsLoading(false);
     }
