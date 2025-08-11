@@ -8,6 +8,11 @@ import SwitchPortLayout from './SwitchPortLayout';
 import VlanInfoCard from './VlanInfoCard';
 import DiagnosticsCard from './DiagnosticsCard';
 import HistoryDashboard from './HistoryDashboard';
+import { SystemManagement } from './SystemManagement';
+import { AdvancedNetworking } from './AdvancedNetworking';
+import { QosManagement } from './QosManagement';
+import { PoeManagement } from './PoeManagement';
+import { ConfigManagement } from './ConfigManagement';
 import { ApiState } from '../lib/useApi';
 
 interface User {
@@ -34,6 +39,31 @@ interface DashboardProps {
   onCreateVlan: (vlanId: number, vlanName: string, taggedPorts: number[], untaggedPorts: number[]) => void;
   onDeleteVlans: (vlanIds: number[]) => void;
   onRefreshVlans: () => void;
+  // System Management handlers
+  onSetSystemName: (name: string) => void;
+  onConfigureIpSettings: (config: any) => void;
+  onFactoryReset: () => void;
+  onSaveConfiguration: () => void;
+  onControlLed: (enabled: boolean) => void;
+  onUpdateUserAccount: (accountData: any) => void;
+  // Advanced Networking handlers
+  onClearPortStatistics: (ports: number[]) => void;
+  onConfigureMirroring: (config: any) => void;
+  onConfigureTrunking: (config: any) => void;
+  onConfigureLoopPrevention: (config: any) => void;
+  // QoS Management handlers
+  onConfigureQosMode: (mode: string) => void;
+  onConfigureBandwidthControl: (config: any) => void;
+  onConfigurePortPriority: (config: any) => void;
+  onConfigureStormControl: (config: any) => void;
+  // PoE Management handlers
+  onConfigurePoEGlobal: (config: any) => void;
+  onConfigurePoEPort: (config: any) => void;
+  // Configuration Management handlers
+  onBackupConfiguration: () => void;
+  onRestoreConfiguration: (file: File) => void;
+  onUpgradeFirmware: (file: File) => void;
+  onConfigureIgmpSnooping: (config: any) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -50,6 +80,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onCreateVlan,
   onDeleteVlans,
   onRefreshVlans,
+  // System Management
+  onSetSystemName,
+  onConfigureIpSettings,
+  onFactoryReset,
+  onSaveConfiguration,
+  onControlLed,
+  onUpdateUserAccount,
+  // Advanced Networking
+  onClearPortStatistics,
+  onConfigureMirroring,
+  onConfigureTrunking,
+  onConfigureLoopPrevention,
+  // QoS Management
+  onConfigureQosMode,
+  onConfigureBandwidthControl,
+  onConfigurePortPriority,
+  onConfigureStormControl,
+  // PoE Management
+  onConfigurePoEGlobal,
+  onConfigurePoEPort,
+  // Configuration Management
+  onBackupConfiguration,
+  onRestoreConfiguration,
+  onUpgradeFirmware,
+  onConfigureIgmpSnooping,
 }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPort, setSelectedPort] = useState<number | undefined>();
@@ -121,6 +176,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               { id: 'ports', label: 'Ports' },
               { id: 'vlans', label: 'VLANs' },
               { id: 'diagnostics', label: 'Diagnostics' },
+              { id: 'system', label: 'System' },
+              { id: 'networking', label: 'Networking' },
+              { id: 'qos', label: 'QoS' },
+              { id: 'poe', label: 'PoE' },
+              { id: 'config', label: 'Config' },
               { id: 'history', label: 'History' }
             ].map((tab) => (
               <button
@@ -175,6 +235,56 @@ export const Dashboard: React.FC<DashboardProps> = ({
           
           {activeTab === 'diagnostics' && (
             <DiagnosticsCard diagnostics={diagnostics} />
+          )}
+
+          {activeTab === 'system' && (
+            <SystemManagement
+              apiState={apiState}
+              onSetSystemName={onSetSystemName}
+              onConfigureIpSettings={onConfigureIpSettings}
+              onFactoryReset={onFactoryReset}
+              onSaveConfiguration={onSaveConfiguration}
+              onControlLed={onControlLed}
+              onUpdateUserAccount={onUpdateUserAccount}
+            />
+          )}
+
+          {activeTab === 'networking' && (
+            <AdvancedNetworking
+              apiState={apiState}
+              onClearPortStatistics={onClearPortStatistics}
+              onConfigureMirroring={onConfigureMirroring}
+              onConfigureTrunking={onConfigureTrunking}
+              onConfigureLoopPrevention={onConfigureLoopPrevention}
+            />
+          )}
+
+          {activeTab === 'qos' && (
+            <QosManagement
+              apiState={apiState}
+              onConfigureQosMode={onConfigureQosMode}
+              onConfigureBandwidthControl={onConfigureBandwidthControl}
+              onConfigurePortPriority={onConfigurePortPriority}
+              onConfigureStormControl={onConfigureStormControl}
+            />
+          )}
+
+          {activeTab === 'poe' && (
+            <PoeManagement
+              apiState={apiState}
+              onConfigurePoEGlobal={onConfigurePoEGlobal}
+              onConfigurePoEPort={onConfigurePoEPort}
+            />
+          )}
+
+          {activeTab === 'config' && (
+            <ConfigManagement
+              apiState={apiState}
+              onBackupConfiguration={onBackupConfiguration}
+              onRestoreConfiguration={onRestoreConfiguration}
+              onUpgradeFirmware={onUpgradeFirmware}
+              onConfigureIgmpSnooping={onConfigureIgmpSnooping}
+            />
           )}
           
           {activeTab === 'history' && (
