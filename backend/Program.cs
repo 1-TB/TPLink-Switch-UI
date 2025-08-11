@@ -28,6 +28,7 @@ builder.Services.AddSingleton<CredentialsStorage>();
 builder.Services.AddSingleton<SwitchService>();
 builder.Services.AddScoped<HistoryService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<AnalyticsService>();
 builder.Services.AddHostedService<SwitchMonitoringService>();
 builder.Services.AddHostedService<SessionCleanupService>();
 builder.Services.AddControllers();

@@ -4,7 +4,8 @@ import { Button } from './ui/button';
 import { 
   Clock, Activity, Zap, Settings, Network, RefreshCw, Search, Filter,
   TrendingUp, AlertTriangle, CheckCircle, Calendar, BarChart3, 
-  Eye, Download, ChevronDown, ChevronUp
+  Eye, Download, ChevronDown, ChevronUp, Users, Shield, Wifi, WifiOff,
+  Database, PieChart, Target, Lightbulb
 } from 'lucide-react';
 import { errorHandler } from '../lib/errorHandler';
 import { useToast } from './ToastProvider';
@@ -27,6 +28,10 @@ interface PortHistoryEntry extends BaseHistoryEntry {
   trunk: string;
   previousValue?: string;
   newValue?: string;
+  userId?: number;
+  username?: string;
+  downtimeDuration?: string;
+  lastUpTime?: string;
 }
 
 interface CableDiagnosticHistoryEntry extends BaseHistoryEntry {
@@ -58,6 +63,85 @@ interface VlanHistoryEntry extends BaseHistoryEntry {
   portMembership: string;
   previousValue?: string;
   newValue?: string;
+}
+
+interface SwitchConnectivityHistoryEntry extends BaseHistoryEntry {
+  isReachable: boolean;
+  ipAddress?: string;
+  responseTimeMs?: number;
+  errorMessage?: string;
+  downtimeDuration?: string;
+}
+
+interface PortStatisticsHistoryEntry extends BaseHistoryEntry {
+  portNumber: number;
+  txGoodPkt: number;
+  txBadPkt: number;
+  rxGoodPkt: number;
+  rxBadPkt: number;
+  txBytes: number;
+  rxBytes: number;
+  txErrorRate: number;
+  rxErrorRate: number;
+}
+
+interface UserActivityHistoryEntry extends BaseHistoryEntry {
+  userId?: number;
+  username: string;
+  actionType: string;
+  description: string;
+  targetEntity?: string;
+  previousValue?: string;
+  newValue?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  isSuccess: boolean;
+  errorMessage?: string;
+}
+
+interface NetworkHealthAnalysis {
+  analysisDate: string;
+  periodStart: string;
+  periodEnd: string;
+  overallHealthScore: number;
+  portHealthScores: Record<number, number>;
+  connectivityReliability: number;
+  userActivitySummary: UserActivitySummary;
+  recommendations: Recommendation[];
+}
+
+interface UserActivitySummary {
+  totalActions: number;
+  configChanges: number;
+  systemCommands: number;
+  failedActions: number;
+  activeUsers: number;
+  mostActiveUser?: string;
+}
+
+interface Recommendation {
+  type: string;
+  priority: number;
+  title: string;
+  description: string;
+  affectedEntity?: string;
+  confidence: number;
+  createdAt: string;
+}
+
+interface PortAnalytics {
+  portNumber: number;
+  analysisDate: string;
+  periodStart: string;
+  periodEnd: string;
+  uptimePercentage: number;
+  totalDowntime: string;
+  averageDowntimeDuration?: string;
+  errorRate: number;
+  activityLevel: string;
+  lastStatusChange?: string;
+  statusChanges: number;
+  configChanges: number;
 }
 
 interface HistoryAnalytics {
@@ -94,14 +178,19 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
   const { showError } = useToast();
   
   // State management
-  const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'analytics' | 'events'>('overview');
+  const [activeView, setActiveView] = useState<'overview' | 'timeline' | 'analytics' | 'events' | 'recommendations' | 'connectivity'>('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   
   // Data state
-  const [allEvents, setAllEvents] = useState<(PortHistoryEntry | CableDiagnosticHistoryEntry | SystemInfoHistoryEntry | VlanHistoryEntry)[]>([]);
+  const [allEvents, setAllEvents] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<HistoryAnalytics | null>(null);
+  const [networkAnalysis, setNetworkAnalysis] = useState<NetworkHealthAnalysis | null>(null);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [connectivityHistory, setConnectivityHistory] = useState<SwitchConnectivityHistoryEntry[]>([]);
+  const [portStatistics, setPortStatistics] = useState<PortStatisticsHistoryEntry[]>([]);
+  const [userActivity, setUserActivity] = useState<UserActivityHistoryEntry[]>([]);
   
   // Pagination and display
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,21 +214,36 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
         `/api/history/ports?${queryParams}`,
         `/api/history/cable-diagnostics?${queryParams}`,
         `/api/history/system-info?${queryParams}`,
-        `/api/history/vlans?${queryParams}`
+        `/api/history/vlans?${queryParams}`,
+        `/api/history/switch-connectivity?${queryParams}`,
+        `/api/history/port-statistics?${queryParams}`,
+        `/api/history/user-activity?${queryParams}`,
+        `/api/history/analytics?${queryParams}`,
+        `/api/history/recommendations`
       ];
 
-      const responses = await Promise.all(endpoints.map(url => fetch(url)));
-      const data = await Promise.all(responses.map(res => res.ok ? res.json() : []));
+      const responses = await Promise.all(endpoints.map(url => 
+        fetch(url).then(res => res.ok ? res.json() : [])
+      ));
       
       // Combine and sort all events
       const combinedEvents = [
-        ...data[0].map((e: PortHistoryEntry) => ({ ...e, eventType: 'port' })),
-        ...data[1].map((e: CableDiagnosticHistoryEntry) => ({ ...e, eventType: 'cable' })),
-        ...data[2].map((e: SystemInfoHistoryEntry) => ({ ...e, eventType: 'system' })),
-        ...data[3].map((e: VlanHistoryEntry) => ({ ...e, eventType: 'vlan' }))
+        ...responses[0].map((e: PortHistoryEntry) => ({ ...e, eventType: 'port' })),
+        ...responses[1].map((e: CableDiagnosticHistoryEntry) => ({ ...e, eventType: 'cable' })),
+        ...responses[2].map((e: SystemInfoHistoryEntry) => ({ ...e, eventType: 'system' })),
+        ...responses[3].map((e: VlanHistoryEntry) => ({ ...e, eventType: 'vlan' })),
+        ...responses[4].map((e: SwitchConnectivityHistoryEntry) => ({ ...e, eventType: 'connectivity' })),
+        ...responses[5].map((e: PortStatisticsHistoryEntry) => ({ ...e, eventType: 'statistics' })),
+        ...responses[6].map((e: UserActivityHistoryEntry) => ({ ...e, eventType: 'user-activity' }))
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       
       setAllEvents(combinedEvents);
+      setConnectivityHistory(responses[4]);
+      setPortStatistics(responses[5]);
+      setUserActivity(responses[6]);
+      setNetworkAnalysis(responses[7]);
+      setRecommendations(responses[8]);
+      
       generateAnalytics(combinedEvents);
     } catch (error) {
       const message = errorHandler.handleApiError(error, 'History Data Fetch');
@@ -285,13 +389,21 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
     if ('testTrigger' in event) return <Zap className="h-4 w-4 text-purple-500" />;
     if ('deviceName' in event) return <Settings className="h-4 w-4 text-blue-500" />;
     if ('vlanName' in event) return <Network className="h-4 w-4 text-green-500" />;
+    if ('isReachable' in event) return event.isReachable 
+      ? <Wifi className="h-4 w-4 text-green-500" /> 
+      : <WifiOff className="h-4 w-4 text-red-500" />;
+    if ('txGoodPkt' in event) return <Database className="h-4 w-4 text-indigo-500" />;
+    if ('actionType' in event) return <Users className="h-4 w-4 text-cyan-500" />;
     return <Activity className="h-4 w-4 text-orange-500" />;
   };
 
   const getEventSeverity = (event: any) => {
     if ('hasIssue' in event && event.hasIssue) return 'high';
     if ('status' in event && event.status === 'Down') return 'high';
+    if ('isReachable' in event && !event.isReachable) return 'high';
+    if ('isSuccess' in event && !event.isSuccess) return 'high';
     if (event.changeType === 'CONFIG_CHANGE') return 'medium';
+    if ('actionType' in event && event.actionType === 'CONFIG_CHANGE') return 'medium';
     return 'low';
   };
 
@@ -347,10 +459,36 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Active Ports</p>
-                    <p className="text-2xl font-bold">{analytics.portActivity.length}</p>
+                    <p className="text-sm text-muted-foreground">Switch Status</p>
+                    <p className={`text-2xl font-bold ${
+                      connectivityHistory.length > 0 && connectivityHistory[0].isReachable 
+                        ? 'text-green-500' : 'text-red-500'
+                    }`}>
+                      {connectivityHistory.length > 0 
+                        ? (connectivityHistory[0].isReachable ? 'Online' : 'Offline')
+                        : 'Unknown'}
+                    </p>
                   </div>
-                  <Network className="h-8 w-8 text-green-500" />
+                  {connectivityHistory.length > 0 && connectivityHistory[0].isReachable ? (
+                    <Wifi className="h-8 w-8 text-green-500" />
+                  ) : (
+                    <WifiOff className="h-8 w-8 text-red-500" />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">User Actions</p>
+                    <p className="text-2xl font-bold">{userActivity.length}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {userActivity.filter(u => !u.isSuccess).length} failed
+                    </p>
+                  </div>
+                  <Users className="h-8 w-8 text-blue-500" />
                 </div>
               </CardContent>
             </Card>
@@ -483,6 +621,9 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                                 {'deviceName' in event && 'System Update'}
                                 {'vlanName' in event && event.vlanName}
                                 {'testTrigger' in event && 'Cable Test'}
+                                {'isReachable' in event && (event.isReachable ? 'Switch Reconnected' : 'Switch Disconnected')}
+                                {'txGoodPkt' in event && `Port ${event.portNumber} Statistics`}
+                                {'actionType' in event && event.description}
                               </h4>
                               {severity === 'high' && (
                                 <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -491,8 +632,11 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                             <span className="text-sm text-gray-500 font-mono">{eventTime}</span>
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
-                            {event.changeType || ('testTrigger' in event ? event.testTrigger : 'Event')}
+                            {event.changeType || ('testTrigger' in event ? event.testTrigger : 'actionType' in event ? event.actionType : 'Event')}
+                            {'username' in event && event.username && ` by ${event.username}`}
                           </p>
+                          
+                          {/* Enhanced status display */}
                           {'status' in event && event.status && (
                             <div className="mt-2">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -502,8 +646,31 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                               }`}>
                                 {event.status}
                               </span>
+                              {'downtimeDuration' in event && event.downtimeDuration && (
+                                <span className="ml-2 text-sm text-orange-600">
+                                  Down for {event.downtimeDuration}
+                                </span>
+                              )}
                             </div>
                           )}
+                          
+                          {/* Connectivity status */}
+                          {'isReachable' in event && (
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                event.isReachable ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {event.isReachable ? 'Reachable' : 'Unreachable'}
+                              </span>
+                              {event.downtimeDuration && (
+                                <span className="ml-2 text-sm text-orange-600">
+                                  Outage: {event.downtimeDuration}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Cable health status */}
                           {'isHealthy' in event && (
                             <div className="mt-2">
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -511,6 +678,34 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                               }`}>
                                 {event.stateDescription}
                               </span>
+                            </div>
+                          )}
+                          
+                          {/* User activity status */}
+                          {'isSuccess' in event && (
+                            <div className="mt-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                event.isSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }`}>
+                                {event.isSuccess ? 'Success' : 'Failed'}
+                              </span>
+                              {'targetEntity' in event && event.targetEntity && (
+                                <span className="ml-2 text-sm text-blue-600">
+                                  Target: {event.targetEntity}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Port statistics summary */}
+                          {'txGoodPkt' in event && (
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                              <div className="bg-green-50 p-2 rounded">
+                                <span className="text-green-700">TX: {event.txGoodPkt.toLocaleString()} good</span>
+                              </div>
+                              <div className="bg-blue-50 p-2 rounded">
+                                <span className="text-blue-700">RX: {event.rxGoodPkt.toLocaleString()} good</span>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -758,21 +953,37 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                         {'deviceName' in event && 'System Update'}
                         {'vlanName' in event && event.vlanName}
                         {'testTrigger' in event && 'Cable Test'}
+                        {'isReachable' in event && (event.isReachable ? 'Switch Reconnected' : 'Switch Disconnected')}
+                        {'txGoodPkt' in event && `Port ${event.portNumber} Statistics`}
+                        {'actionType' in event && event.description}
                       </h4>
                       {severity === 'high' && (
                         <AlertTriangle className="h-4 w-4 text-red-500" />
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {formatTimestamp(event.timestamp)} • {event.changeType || 'testTrigger' in event ? event.testTrigger : 'Event'}
+                      {formatTimestamp(event.timestamp)} • {event.changeType || ('testTrigger' in event ? event.testTrigger : 'actionType' in event ? event.actionType : 'Event')}
+                      {'username' in event && event.username && ` • by ${event.username}`}
                     </p>
                     <div className="mt-2 text-sm">
                       {'status' in event && <span className="mr-4">Status: {event.status}</span>}
+                      {'isReachable' in event && (
+                        <span className={`mr-4 ${event.isReachable ? 'text-green-600' : 'text-red-600'}`}>
+                          {event.isReachable ? 'Reachable' : 'Unreachable'}
+                        </span>
+                      )}
                       {'isHealthy' in event && (
                         <span className={`px-2 py-1 rounded text-xs ${
                           event.isHealthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}>
                           {event.stateDescription}
+                        </span>
+                      )}
+                      {'isSuccess' in event && (
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          event.isSuccess ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {event.isSuccess ? 'Success' : 'Failed'}
                         </span>
                       )}
                     </div>
@@ -805,6 +1016,37 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
                   )}
                   {'length' in event && event.length > 0 && (
                     <div><strong>Cable Length:</strong> {event.length}m</div>
+                  )}
+                  {'downtimeDuration' in event && event.downtimeDuration && (
+                    <div><strong>Downtime Duration:</strong> {event.downtimeDuration}</div>
+                  )}
+                  {'targetEntity' in event && event.targetEntity && (
+                    <div><strong>Target:</strong> {event.targetEntity}</div>
+                  )}
+                  {'ipAddress' in event && event.ipAddress && (
+                    <div><strong>IP Address:</strong> {event.ipAddress}</div>
+                  )}
+                  {'responseTimeMs' in event && event.responseTimeMs && (
+                    <div><strong>Response Time:</strong> {event.responseTimeMs}ms</div>
+                  )}
+                  {'errorMessage' in event && event.errorMessage && (
+                    <div><strong>Error:</strong> <span className="text-red-600">{event.errorMessage}</span></div>
+                  )}
+                  {'txGoodPkt' in event && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <strong>TX Packets:</strong><br/>
+                        Good: {event.txGoodPkt.toLocaleString()}<br/>
+                        Bad: {event.txBadPkt.toLocaleString()}<br/>
+                        Error Rate: {event.txErrorRate.toFixed(2)}%
+                      </div>
+                      <div>
+                        <strong>RX Packets:</strong><br/>
+                        Good: {event.rxGoodPkt.toLocaleString()}<br/>
+                        Bad: {event.rxBadPkt.toLocaleString()}<br/>
+                        Error Rate: {event.rxErrorRate.toFixed(2)}%
+                      </div>
+                    </div>
                   )}
                   {event.notes && (
                     <div><strong>Notes:</strong> {event.notes}</div>
@@ -840,6 +1082,342 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
           </Button>
         </div>
       )}
+    </div>
+  );
+
+  const renderRecommendations = () => {
+    if (!networkAnalysis) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center py-8 text-muted-foreground">
+              Loading AI insights and recommendations...
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Health Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Network Health</p>
+                  <p className={`text-3xl font-bold ${
+                    networkAnalysis.overallHealthScore >= 90 ? 'text-green-500' :
+                    networkAnalysis.overallHealthScore >= 70 ? 'text-yellow-500' : 'text-red-500'
+                  }`}>
+                    {Math.round(networkAnalysis.overallHealthScore)}%
+                  </p>
+                </div>
+                <Shield className={`h-8 w-8 ${
+                  networkAnalysis.overallHealthScore >= 90 ? 'text-green-500' :
+                  networkAnalysis.overallHealthScore >= 70 ? 'text-yellow-500' : 'text-red-500'
+                }`} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Connectivity</p>
+                  <p className={`text-3xl font-bold ${
+                    networkAnalysis.connectivityReliability >= 95 ? 'text-green-500' :
+                    networkAnalysis.connectivityReliability >= 90 ? 'text-yellow-500' : 'text-red-500'
+                  }`}>
+                    {Math.round(networkAnalysis.connectivityReliability)}%
+                  </p>
+                </div>
+                <Wifi className={`h-8 w-8 ${
+                  networkAnalysis.connectivityReliability >= 95 ? 'text-green-500' :
+                  networkAnalysis.connectivityReliability >= 90 ? 'text-yellow-500' : 'text-red-500'
+                }`} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Active Users</p>
+                  <p className="text-3xl font-bold">{networkAnalysis.userActivitySummary.activeUsers}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {networkAnalysis.userActivitySummary.totalActions} actions
+                  </p>
+                </div>
+                <Users className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recommendations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Lightbulb className="h-5 w-5 text-yellow-500" />
+              <span>AI-Powered Recommendations</span>
+            </CardTitle>
+            <CardDescription>Machine learning insights and suggestions for network optimization</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recommendations.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">All Systems Operating Optimally</h3>
+                <p className="text-gray-600">No recommendations at this time. Your network is performing well!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recommendations.map((rec, index) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg border-l-4 ${
+                      rec.priority >= 3 ? 'border-red-500 bg-red-50' :
+                      rec.priority >= 2 ? 'border-yellow-500 bg-yellow-50' :
+                      'border-blue-500 bg-blue-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h4 className="font-medium text-gray-900">{rec.title}</h4>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            rec.priority >= 3 ? 'bg-red-100 text-red-800' :
+                            rec.priority >= 2 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {rec.priority >= 3 ? 'High' : rec.priority >= 2 ? 'Medium' : 'Low'} Priority
+                          </span>
+                        </div>
+                        <p className="text-gray-700 mb-2">{rec.description}</p>
+                        <div className="flex items-center justify-between text-sm text-gray-500">
+                          <span>Affects: {rec.affectedEntity || 'System'}</span>
+                          <span>Confidence: {Math.round(rec.confidence * 100)}%</span>
+                        </div>
+                      </div>
+                      <Target className={`h-5 w-5 ml-4 ${
+                        rec.priority >= 3 ? 'text-red-500' :
+                        rec.priority >= 2 ? 'text-yellow-500' :
+                        'text-blue-500'
+                      }`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* User Activity Summary */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-500" />
+              <span>User Activity Analysis</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-blue-600">{networkAnalysis.userActivitySummary.configChanges}</p>
+                <p className="text-sm text-muted-foreground">Config Changes</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-green-600">{networkAnalysis.userActivitySummary.systemCommands}</p>
+                <p className="text-sm text-muted-foreground">System Commands</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-red-600">{networkAnalysis.userActivitySummary.failedActions}</p>
+                <p className="text-sm text-muted-foreground">Failed Actions</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{networkAnalysis.userActivitySummary.activeUsers}</p>
+                <p className="text-sm text-muted-foreground">Active Users</p>
+              </div>
+            </div>
+            {networkAnalysis.userActivitySummary.mostActiveUser && (
+              <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm">
+                  <strong>Most Active User:</strong> {networkAnalysis.userActivitySummary.mostActiveUser}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderConnectivity = () => (
+    <div className="space-y-6">
+      {/* Connectivity Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Wifi className="h-5 w-5 text-green-500" />
+            <span>Switch Connectivity Status</span>
+          </CardTitle>
+          <CardDescription>Real-time and historical switch reachability information</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {connectivityHistory.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No connectivity data available
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="flex items-center space-x-3 p-4 bg-green-50 rounded-lg">
+                  <Wifi className="h-8 w-8 text-green-500" />
+                  <div>
+                    <p className="font-medium">Current Status</p>
+                    <p className={`text-sm ${
+                      connectivityHistory[0]?.isReachable ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {connectivityHistory[0]?.isReachable ? 'Reachable' : 'Unreachable'}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg">
+                  <Clock className="h-8 w-8 text-blue-500" />
+                  <div>
+                    <p className="font-medium">Last Check</p>
+                    <p className="text-sm text-blue-600">
+                      {connectivityHistory[0] ? formatTimestamp(connectivityHistory[0].timestamp) : 'Never'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg">
+                  <TrendingUp className="h-8 w-8 text-purple-500" />
+                  <div>
+                    <p className="font-medium">Reliability</p>
+                    <p className="text-sm text-purple-600">
+                      {networkAnalysis ? `${Math.round(networkAnalysis.connectivityReliability)}%` : 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Connectivity Timeline */}
+              <div className="space-y-3">
+                <h4 className="font-medium">Recent Connectivity Events</h4>
+                {connectivityHistory.slice(0, 10).map((event, index) => (
+                  <div key={index} className="flex items-center space-x-4 p-3 border rounded-lg">
+                    {event.isReachable ? (
+                      <Wifi className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <WifiOff className="h-5 w-5 text-red-500" />
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className={`font-medium ${event.isReachable ? 'text-green-700' : 'text-red-700'}`}>
+                          {event.isReachable ? 'Switch Reachable' : 'Switch Unreachable'}
+                        </p>
+                        <span className="text-sm text-muted-foreground">
+                          {formatTimestamp(event.timestamp)}
+                        </span>
+                      </div>
+                      {event.responseTimeMs && (
+                        <p className="text-sm text-muted-foreground">
+                          Response time: {event.responseTimeMs}ms
+                        </p>
+                      )}
+                      {event.errorMessage && (
+                        <p className="text-sm text-red-600">
+                          Error: {event.errorMessage}
+                        </p>
+                      )}
+                      {event.downtimeDuration && (
+                        <p className="text-sm text-orange-600">
+                          Downtime: {event.downtimeDuration}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Port Statistics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Database className="h-5 w-5 text-indigo-500" />
+            <span>Port Traffic Statistics</span>
+          </CardTitle>
+          <CardDescription>Packet transmission and error statistics for network ports</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {portStatistics.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No port statistics available
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {portStatistics
+                .filter(stat => selectedPort ? stat.portNumber === selectedPort : true)
+                .slice(0, 10)
+                .map((stat, index) => (
+                <div key={index} className="p-4 border rounded-lg">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">Port {stat.portNumber}</h4>
+                    <span className="text-sm text-muted-foreground">
+                      {formatTimestamp(stat.timestamp)}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="text-center p-2 bg-green-50 rounded">
+                      <p className="font-medium text-green-700">TX Good</p>
+                      <p className="text-green-600">{stat.txGoodPkt.toLocaleString()}</p>
+                    </div>
+                    <div className="text-center p-2 bg-red-50 rounded">
+                      <p className="font-medium text-red-700">TX Bad</p>
+                      <p className="text-red-600">{stat.txBadPkt.toLocaleString()}</p>
+                    </div>
+                    <div className="text-center p-2 bg-blue-50 rounded">
+                      <p className="font-medium text-blue-700">RX Good</p>
+                      <p className="text-blue-600">{stat.rxGoodPkt.toLocaleString()}</p>
+                    </div>
+                    <div className="text-center p-2 bg-orange-50 rounded">
+                      <p className="font-medium text-orange-700">RX Bad</p>
+                      <p className="text-orange-600">{stat.rxBadPkt.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">TX Error Rate</p>
+                      <p className={`font-medium ${stat.txErrorRate > 1 ? 'text-red-600' : 'text-green-600'}`}>
+                        {stat.txErrorRate.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">RX Error Rate</p>
+                      <p className={`font-medium ${stat.rxErrorRate > 1 ? 'text-red-600' : 'text-green-600'}`}>
+                        {stat.rxErrorRate.toFixed(2)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -917,17 +1495,19 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
       {/* Navigation Tabs */}
       <Card>
         <CardContent className="p-0">
-          <div className="flex border-b">
+          <div className="flex border-b overflow-x-auto">
             {[
               { id: 'overview', label: 'Overview', icon: BarChart3 },
               { id: 'events', label: 'All Events', icon: Activity },
               { id: 'timeline', label: 'Timeline', icon: Calendar },
-              { id: 'analytics', label: 'Analytics', icon: TrendingUp }
+              { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+              { id: 'recommendations', label: 'AI Insights', icon: Lightbulb },
+              { id: 'connectivity', label: 'Connectivity', icon: Wifi }
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveView(tab.id as any)}
-                className={`flex items-center space-x-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center space-x-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeView === tab.id
                     ? 'border-primary text-primary bg-primary/5'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -947,6 +1527,8 @@ export default function HistoryDashboard({ selectedPort }: HistoryDashboardProps
         {activeView === 'events' && renderEventsList()}
         {activeView === 'timeline' && renderTimeline()}
         {activeView === 'analytics' && renderAnalytics()}
+        {activeView === 'recommendations' && renderRecommendations()}
+        {activeView === 'connectivity' && renderConnectivity()}
       </div>
     </div>
   );

@@ -16,6 +16,7 @@ public class SwitchMonitoringService : IHostedService, IDisposable
     private readonly SemaphoreSlim _monitoringSemaphore = new(1, 1);
     private readonly SemaphoreSlim _cookieRenewalSemaphore = new(1, 1);
     private bool _isAuthenticated = false;
+    private bool _lastConnectionState = false;
     private DateTime _lastSuccessfulConnection = DateTime.MinValue;
     private DateTime _lastCookieRenewal = DateTime.MinValue;
 
@@ -145,34 +146,68 @@ public class SwitchMonitoringService : IHostedService, IDisposable
             using var scope = _serviceProvider.CreateScope();
             var switchService = scope.ServiceProvider.GetRequiredService<SwitchService>();
             var historyService = scope.ServiceProvider.GetRequiredService<HistoryService>();
+            var credentialsStorage = scope.ServiceProvider.GetRequiredService<CredentialsStorage>();
 
             _logger.LogDebug("Starting monitoring cycle");
 
-            // Test connection and get system info
-            var systemInfoResult = await switchService.GetSystemInfoAsync();
-            _lastSuccessfulConnection = DateTime.UtcNow;
-
-            // Get port information
-            var portsResult = await switchService.GetPortInfoAsync();
-            if (portsResult.Ports != null)
+            bool connectionSuccessful = false;
+            string? switchIp = null;
+            
+            try
             {
-                _logger.LogDebug("Monitoring cycle retrieved {PortCount} ports", portsResult.Ports.Count);
+                var credentials = await credentialsStorage.LoadAsync();
+                switchIp = credentials?.Host;
+
+                // Test connection and get system info
+                var systemInfoResult = await switchService.GetSystemInfoAsync();
+                _lastSuccessfulConnection = DateTime.UtcNow;
+                connectionSuccessful = true;
+
+                // Get port information
+                var portsResult = await switchService.GetPortInfoAsync();
+                if (portsResult.Ports != null)
+                {
+                    _logger.LogDebug("Monitoring cycle retrieved {PortCount} ports", portsResult.Ports.Count);
+                    
+                    // Port info is automatically logged by SwitchService with change detection
+                    // No need to log again here to avoid duplicate entries
+                }
+
+                // Log system info to history
+                await historyService.LogSystemInfoAsync(systemInfoResult, "monitoring");
+
+                _logger.LogDebug("Monitoring cycle completed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during monitoring cycle - switch may be unreachable");
+                connectionSuccessful = false;
                 
-                // Port info is automatically logged by SwitchService with change detection
-                // No need to log again here to avoid duplicate entries
+                // Mark as unauthenticated on error
+                _isAuthenticated = false;
             }
 
-            // Log system info to history
-            await historyService.LogSystemInfoAsync(systemInfoResult, "monitoring");
-
-            _logger.LogDebug("Monitoring cycle completed successfully");
+            // Log connectivity changes
+            if (_lastConnectionState != connectionSuccessful)
+            {
+                if (connectionSuccessful)
+                {
+                    await historyService.LogSwitchConnectivityAsync(true, switchIp);
+                    _logger.LogInformation("Switch became reachable");
+                }
+                else
+                {
+                    await historyService.LogSwitchConnectivityAsync(false, switchIp, errorMessage: "Switch unreachable during monitoring cycle");
+                    _logger.LogWarning("Switch became unreachable");
+                }
+                _lastConnectionState = connectionSuccessful;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during monitoring cycle");
-            
-            // Mark as unauthenticated on error
+            _logger.LogError(ex, "Unexpected error during monitoring cycle");
             _isAuthenticated = false;
+            _lastConnectionState = false;
         }
     }
 
