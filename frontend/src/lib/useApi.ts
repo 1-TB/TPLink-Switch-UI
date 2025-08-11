@@ -251,6 +251,393 @@ export const useApi = () => {
     }, 'Switch Reboot');
   }, [checkAuthAndLogout, showSuccess]);
 
+  // System Management API calls
+  const setSystemName = useCallback(async (systemName: string, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemName })
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('System name updated successfully');
+      await fetchSystemInfo(onLogout);
+    }, 'System Name Update');
+  }, [checkAuthAndLogout, showSuccess, fetchSystemInfo]);
+
+  const configureIpSettings = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/ip-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('IP configuration updated successfully');
+      await fetchSystemInfo(onLogout);
+    }, 'IP Configuration');
+  }, [checkAuthAndLogout, showSuccess, fetchSystemInfo]);
+
+  const factoryReset = useCallback(async (onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/factory-reset', { method: 'POST' });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Factory reset initiated. The switch will restart with default settings.');
+    }, 'Factory Reset');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const saveConfiguration = useCallback(async (onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/save-config', { method: 'POST' });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Configuration saved successfully');
+    }, 'Save Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const controlLed = useCallback(async (enabled: boolean, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/led-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess(`LED ${enabled ? 'enabled' : 'disabled'} successfully`);
+    }, 'LED Control');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const updateUserAccount = useCallback(async (accountData: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/system/user-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accountData)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('User account updated successfully');
+    }, 'User Account Update');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  // Advanced Networking API calls
+  const clearPortStatistics = useCallback(async (ports: number[], onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/ports/clear-statistics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ports })
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Port statistics cleared successfully');
+      await fetchPortInfo(onLogout);
+    }, 'Clear Port Statistics');
+  }, [checkAuthAndLogout, showSuccess, fetchPortInfo]);
+
+  const configureMirroring = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const enableResponse = await fetch('/api/mirroring/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: config.enabled, mirrorDestinationPort: config.mirrorDestinationPort })
+      });
+
+      if (!enableResponse.ok) {
+        if (checkAuthAndLogout(enableResponse, onLogout)) return;
+        const errorData = await enableResponse.json();
+        throw new Error(errorData.message || `HTTP ${enableResponse.status}`);
+      }
+
+      if (config.enabled && config.mirrorPorts?.length > 0) {
+        const configResponse = await fetch('/api/mirroring/configure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mirrorPorts: config.mirrorPorts })
+        });
+
+        if (!configResponse.ok) {
+          if (checkAuthAndLogout(configResponse, onLogout)) return;
+          const errorData = await configResponse.json();
+          throw new Error(errorData.message || `HTTP ${configResponse.status}`);
+        }
+      }
+
+      showSuccess(`Port mirroring ${config.enabled ? 'enabled' : 'disabled'} successfully`);
+    }, 'Port Mirroring Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const configureTrunking = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/trunking/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Port trunking configured successfully');
+      await fetchPortInfo(onLogout);
+    }, 'Port Trunking Configuration');
+  }, [checkAuthAndLogout, showSuccess, fetchPortInfo]);
+
+  const configureLoopPrevention = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/loop-prevention', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Loop prevention configured successfully');
+    }, 'Loop Prevention Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  // QoS Management API calls
+  const configureQosMode = useCallback(async (mode: string, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/qos/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('QoS mode configured successfully');
+    }, 'QoS Mode Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const configureBandwidthControl = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/qos/bandwidth-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Bandwidth control configured successfully');
+    }, 'Bandwidth Control Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const configurePortPriority = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/qos/port-priority', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Port priority configured successfully');
+    }, 'Port Priority Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const configureStormControl = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/qos/storm-control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Storm control configured successfully');
+    }, 'Storm Control Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  // PoE Management API calls
+  const configurePoEGlobal = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/poe/global-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('PoE global configuration updated successfully');
+    }, 'PoE Global Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const configurePoEPort = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/poe/port-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('PoE port configuration updated successfully');
+    }, 'PoE Port Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  // Configuration Management API calls
+  const backupConfiguration = useCallback(async (onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/config/backup', { method: 'POST' });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      // Create download link
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `switch-config-${new Date().toISOString().split('T')[0]}.cfg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      showSuccess('Configuration backup downloaded successfully');
+    }, 'Configuration Backup');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const restoreConfiguration = useCallback(async (file: File, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/config/restore', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Configuration restored successfully. Switch will restart.');
+    }, 'Configuration Restore');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  const upgradeFirmware = useCallback(async (file: File, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/firmware/upgrade', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('Firmware upgrade initiated. This may take several minutes.');
+    }, 'Firmware Upgrade');
+  }, [checkAuthAndLogout, showSuccess]);
+
+  // Protocol Support API calls
+  const configureIgmpSnooping = useCallback(async (config: any, onLogout: () => void) => {
+    return withErrorHandling(async () => {
+      const response = await fetch('/api/igmp-snooping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        if (checkAuthAndLogout(response, onLogout)) return;
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP ${response.status}`);
+      }
+
+      showSuccess('IGMP snooping configured successfully');
+    }, 'IGMP Snooping Configuration');
+  }, [checkAuthAndLogout, showSuccess]);
+
   return {
     ...apiState,
     fetchAllData,
@@ -262,5 +649,31 @@ export const useApi = () => {
     createVlan,
     deleteVlans,
     rebootSwitch,
+    // System Management
+    setSystemName,
+    configureIpSettings,
+    factoryReset,
+    saveConfiguration,
+    controlLed,
+    updateUserAccount,
+    // Advanced Networking
+    clearPortStatistics,
+    configureMirroring,
+    configureTrunking,
+    configureLoopPrevention,
+    // QoS Management
+    configureQosMode,
+    configureBandwidthControl,
+    configurePortPriority,
+    configureStormControl,
+    // PoE Management
+    configurePoEGlobal,
+    configurePoEPort,
+    // Configuration Management
+    backupConfiguration,
+    restoreConfiguration,
+    upgradeFirmware,
+    // Protocol Support
+    configureIgmpSnooping,
   };
 };
