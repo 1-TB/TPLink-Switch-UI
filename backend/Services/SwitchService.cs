@@ -297,10 +297,150 @@ namespace TPLinkWebUI.Services
             await historyService.LogVlanChangeAsync(vlanInfo, "PVID_CHANGED", message);
         }
 
-        public async Task RebootSwitchAsync()
+        public async Task RebootSwitchAsync(bool saveConfig = false)
         {
             await EnsureClientFromStorageAsync();
-            await _client!.RebootAsync();
+            await _client!.RebootAsync(saveConfig);
+        }
+
+        // System Management Methods
+
+        public async Task SetSystemNameAsync(string systemName)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetSystemNameAsync(systemName);
+        }
+
+        public async Task SetIpConfigurationAsync(bool dhcpEnabled, string? ipAddress = null, string? subnetMask = null, string? gateway = null)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetIpConfigurationAsync(dhcpEnabled, ipAddress, subnetMask, gateway);
+        }
+
+        public async Task FactoryResetAsync()
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.FactoryResetAsync();
+        }
+
+        public async Task SaveConfigurationAsync()
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SaveConfigurationAsync();
+        }
+
+        public async Task SetLedControlAsync(bool ledEnabled)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetLedControlAsync(ledEnabled);
+        }
+
+        public async Task SetUserAccountAsync(string newUsername, string currentPassword, string newPassword, string confirmPassword)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetUserAccountAsync(newUsername, currentPassword, newPassword, confirmPassword);
+        }
+
+        // Port Management Methods
+
+        public async Task ClearPortStatisticsAsync()
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.ClearPortStatisticsAsync();
+        }
+
+        // Advanced Features Methods
+
+        public async Task SetPortMirroringEnabledAsync(bool enabled, int mirrorDestinationPort = 1)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPortMirroringEnabledAsync(enabled, mirrorDestinationPort);
+        }
+
+        public async Task ConfigurePortMirroringAsync(int[] sourcePorts, bool ingressEnabled, bool egressEnabled)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.ConfigurePortMirroringAsync(sourcePorts, ingressEnabled, egressEnabled);
+        }
+
+        public async Task SetPortTrunkingAsync(int trunkId, int[] memberPorts)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPortTrunkingAsync(trunkId, memberPorts);
+        }
+
+        public async Task SetLoopPreventionAsync(bool enabled)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetLoopPreventionAsync(enabled);
+        }
+
+        // QoS Methods
+
+        public async Task SetQosModeAsync(int mode)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetQosModeAsync(mode);
+        }
+
+        public async Task SetBandwidthControlAsync(int[] ports, int ingressRate, int egressRate)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetBandwidthControlAsync(ports, ingressRate, egressRate);
+        }
+
+        public async Task SetPortPriorityAsync(int[] ports, int priority)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPortPriorityAsync(ports, priority);
+        }
+
+        public async Task SetStormControlAsync(int[] ports, int broadcastRate, int multicastRate, int unicastRate)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetStormControlAsync(ports, broadcastRate, multicastRate, unicastRate);
+        }
+
+        // IGMP Snooping
+
+        public async Task SetIgmpSnoopingAsync(bool enabled)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetIgmpSnoopingAsync(enabled);
+        }
+
+        // PoE Management
+
+        public async Task SetPoeGlobalConfigAsync(float powerLimit)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPoeGlobalConfigAsync(powerLimit);
+        }
+
+        public async Task SetPoePortConfigAsync(int[] ports, int state = 7, int priority = 7, int powerLimit = 7, float? manualPowerLimit = null)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.SetPoePortConfigAsync(ports, state, priority, powerLimit, manualPowerLimit);
+        }
+
+        // Configuration Management
+
+        public async Task<Stream> BackupConfigurationAsync()
+        {
+            await EnsureClientFromStorageAsync();
+            return await _client!.BackupConfigurationAsync();
+        }
+
+        public async Task RestoreConfigurationAsync(Stream configFileStream, string fileName)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.RestoreConfigurationAsync(configFileStream, fileName);
+        }
+
+        public async Task UpgradeFirmwareAsync(Stream firmwareFileStream, string fileName)
+        {
+            await EnsureClientFromStorageAsync();
+            await _client!.UpgradeFirmwareAsync(firmwareFileStream, fileName);
         }
 
         private bool HasPortChanges(List<PortInfo> oldPorts, List<PortInfo> newPorts)

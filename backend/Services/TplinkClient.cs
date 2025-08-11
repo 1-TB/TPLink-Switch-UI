@@ -618,14 +618,364 @@ namespace TPLinkWebUI.Services
             }
         }
 
-        public async Task RebootAsync()
+        public async Task RebootAsync(bool saveConfig = false)
         {
             var form = new Dictionary<string, string>
             {
-                ["reboot_op"] = "reboot^",
-                ["save_op"] = "false"
+                ["reboot_op"] = "reboot",
+                ["save_op"] = saveConfig.ToString().ToLower()
             };
             var resp = await _http.PostAsync(_baseUrl + "/reboot.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // System Management Methods
+
+        public async Task SetSystemNameAsync(string systemName)
+        {
+            if (string.IsNullOrWhiteSpace(systemName))
+                throw new ArgumentException("System name cannot be empty.");
+            
+            if (systemName.Length > 32)
+                throw new ArgumentException("System name cannot exceed 32 characters.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["sysName"] = systemName
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/system_name_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetIpConfigurationAsync(bool dhcpEnabled, string? ipAddress = null, string? subnetMask = null, string? gateway = null)
+        {
+            var formData = new MultipartFormDataContent();
+            
+            formData.Add(new StringContent(dhcpEnabled ? "enable" : "disable"), "dhcpSetting");
+            
+            if (!dhcpEnabled)
+            {
+                if (string.IsNullOrWhiteSpace(ipAddress) || string.IsNullOrWhiteSpace(subnetMask) || string.IsNullOrWhiteSpace(gateway))
+                    throw new ArgumentException("IP address, subnet mask, and gateway are required when DHCP is disabled.");
+                
+                formData.Add(new StringContent(ipAddress), "ip_address");
+                formData.Add(new StringContent(subnetMask), "ip_netmask");
+                formData.Add(new StringContent(gateway), "ip_gateway");
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/ip_setting.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task FactoryResetAsync()
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["reset_op"] = "factory"
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/reset.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SaveConfigurationAsync()
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["action_op"] = "save"
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/savingconfig.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetLedControlAsync(bool ledEnabled)
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["rd_led"] = ledEnabled ? "1" : "0"
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/led_on_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetUserAccountAsync(string newUsername, string currentPassword, string newPassword, string confirmPassword)
+        {
+            if (string.IsNullOrWhiteSpace(newUsername) || newUsername.Length > 16)
+                throw new ArgumentException("Username must be 1-16 characters.");
+            
+            if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6 || newPassword.Length > 16)
+                throw new ArgumentException("Password must be 6-16 characters.");
+            
+            if (newPassword != confirmPassword)
+                throw new ArgumentException("Password confirmation does not match.");
+
+            var formData = new MultipartFormDataContent();
+            formData.Add(new StringContent(newUsername), "txt_username");
+            formData.Add(new StringContent(currentPassword), "txt_oldpwd");
+            formData.Add(new StringContent(newPassword), "txt_userpwd");
+            formData.Add(new StringContent(confirmPassword), "txt_confirmpwd");
+
+            var resp = await _http.PostAsync(_baseUrl + "/usr_account_set.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // Port Management Methods
+
+        public async Task ClearPortStatisticsAsync()
+        {
+            var formData = new MultipartFormDataContent();
+            var resp = await _http.PostAsync(_baseUrl + "/port_statistics_set.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // Advanced Features Methods
+
+        public async Task SetPortMirroringEnabledAsync(bool enabled, int mirrorDestinationPort = 1)
+        {
+            if (enabled && (mirrorDestinationPort < 1 || mirrorDestinationPort > 48))
+                throw new ArgumentException("Invalid mirror destination port.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["state"] = enabled ? "1" : "0",
+                ["mirroringport"] = mirrorDestinationPort.ToString()
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/mirror_enabled_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task ConfigurePortMirroringAsync(int[] sourcePorts, bool ingressEnabled, bool egressEnabled)
+        {
+            if (sourcePorts == null || sourcePorts.Length == 0)
+                throw new ArgumentException("At least one source port must be specified.");
+
+            var formData = new MultipartFormDataContent();
+            
+            foreach (var port in sourcePorts)
+            {
+                formData.Add(new StringContent(port.ToString()), "mirroredport");
+            }
+            
+            formData.Add(new StringContent(ingressEnabled ? "1" : "0"), "ingressState");
+            formData.Add(new StringContent(egressEnabled ? "1" : "0"), "egressState");
+
+            var resp = await _http.PostAsync(_baseUrl + "/mirrored_port_set.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetPortTrunkingAsync(int trunkId, int[] memberPorts)
+        {
+            if (trunkId < 1 || trunkId > 8)
+                throw new ArgumentException("Trunk ID must be between 1 and 8.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["trunk_id"] = trunkId.ToString()
+            };
+
+            if (memberPorts != null)
+            {
+                foreach (var port in memberPorts)
+                {
+                    form.Add($"member_ports", port.ToString());
+                }
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/port_trunk_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetLoopPreventionAsync(bool enabled)
+        {
+            var formData = new MultipartFormDataContent();
+            formData.Add(new StringContent(enabled ? "1" : "0"), "lpEn");
+
+            var resp = await _http.PostAsync(_baseUrl + "/loop_prevention_set.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // QoS Methods
+
+        public async Task SetQosModeAsync(int mode)
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["qos_mode"] = mode.ToString()
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/qos_mode_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetBandwidthControlAsync(int[] ports, int ingressRate, int egressRate)
+        {
+            if (ports == null || ports.Length == 0)
+                throw new ArgumentException("At least one port must be specified.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["ingress_rate"] = ingressRate.ToString(),
+                ["egress_rate"] = egressRate.ToString()
+            };
+
+            foreach (var port in ports)
+            {
+                form.Add("portid", port.ToString());
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/qos_bandwidth_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetPortPriorityAsync(int[] ports, int priority)
+        {
+            if (ports == null || ports.Length == 0)
+                throw new ArgumentException("At least one port must be specified.");
+            
+            if (priority < 0 || priority > 7)
+                throw new ArgumentException("Priority must be between 0 and 7.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["priority"] = priority.ToString()
+            };
+
+            foreach (var port in ports)
+            {
+                form.Add("portid", port.ToString());
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/qos_port_priority_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetStormControlAsync(int[] ports, int broadcastRate, int multicastRate, int unicastRate)
+        {
+            if (ports == null || ports.Length == 0)
+                throw new ArgumentException("At least one port must be specified.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["broadcast_rate"] = broadcastRate.ToString(),
+                ["multicast_rate"] = multicastRate.ToString(),
+                ["unicast_rate"] = unicastRate.ToString()
+            };
+
+            foreach (var port in ports)
+            {
+                form.Add("portid", port.ToString());
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/qos_storm_set.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // IGMP Snooping
+
+        public async Task SetIgmpSnoopingAsync(bool enabled)
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["igmp_enable"] = enabled ? "1" : "0"
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/igmpSnooping.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // PoE Management (for PoE-enabled switches)
+
+        public async Task SetPoeGlobalConfigAsync(float powerLimit)
+        {
+            if (powerLimit <= 0)
+                throw new ArgumentException("Power limit must be greater than 0.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["name_powerlimit"] = powerLimit.ToString("F1")
+            };
+
+            var resp = await _http.PostAsync(_baseUrl + "/poe_global_config.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task SetPoePortConfigAsync(int[] ports, int state = 7, int priority = 7, int powerLimit = 7, float? manualPowerLimit = null)
+        {
+            if (ports == null || ports.Length == 0)
+                throw new ArgumentException("At least one port must be specified.");
+
+            var form = new Dictionary<string, string>
+            {
+                ["name_pstate"] = state.ToString(),
+                ["name_ppriority"] = priority.ToString(),
+                ["name_ppowerlimit"] = powerLimit.ToString()
+            };
+
+            if (powerLimit == 6 && manualPowerLimit.HasValue) // Manual power limit
+            {
+                if (manualPowerLimit.Value < 0.1f || manualPowerLimit.Value > 30.0f)
+                    throw new ArgumentException("Manual power limit must be between 0.1 and 30.0 watts.");
+                
+                form["name_ppowerlimit2"] = manualPowerLimit.Value.ToString("F1");
+            }
+
+            foreach (var port in ports)
+            {
+                form.Add($"sel_{port}", "1");
+            }
+
+            var resp = await _http.PostAsync(_baseUrl + "/poe_port_config.cgi", new FormUrlEncodedContent(form));
+            resp.EnsureSuccessStatusCode();
+        }
+
+        // Configuration Management
+
+        public async Task<Stream> BackupConfigurationAsync()
+        {
+            var formData = new MultipartFormDataContent();
+            var resp = await _http.PostAsync(_baseUrl + "/config_back.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+            return await resp.Content.ReadAsStreamAsync();
+        }
+
+        public async Task RestoreConfigurationAsync(Stream configFileStream, string fileName)
+        {
+            if (configFileStream == null)
+                throw new ArgumentException("Configuration file stream cannot be null.");
+            
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Configuration file must have .cfg extension.");
+            
+            if (fileName.Length > 64)
+                throw new ArgumentException("Configuration filename cannot exceed 64 characters.");
+
+            var formData = new MultipartFormDataContent();
+            var fileContent = new StreamContent(configFileStream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            formData.Add(fileContent, "configfile", fileName);
+
+            var resp = await _http.PostAsync(_baseUrl + "/conf_restore.cgi", formData);
+            resp.EnsureSuccessStatusCode();
+        }
+
+        public async Task UpgradeFirmwareAsync(Stream firmwareFileStream, string fileName)
+        {
+            if (firmwareFileStream == null)
+                throw new ArgumentException("Firmware file stream cannot be null.");
+            
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Firmware file must have .bin extension.");
+
+            var formData = new MultipartFormDataContent();
+            var fileContent = new StreamContent(firmwareFileStream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            formData.Add(fileContent, "firmware", fileName);
+
+            var resp = await _http.PostAsync(_baseUrl + "/httpupg.cgi?cmd=fw_upgrade", formData);
             resp.EnsureSuccessStatusCode();
         }
 

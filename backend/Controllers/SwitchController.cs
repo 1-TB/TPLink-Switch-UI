@@ -345,14 +345,15 @@ namespace TPLinkWebUI.Controllers
         }
 
         [HttpPost("reboot")]
-        public async Task<IActionResult> RebootSwitch()
+        public async Task<IActionResult> RebootSwitch([FromBody] RebootRequest? request = null)
         {
             var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
-            _logger.LogWarning("Switch reboot initiated by {ClientIP}", clientIp);
+            var saveConfig = request?.SaveConfig ?? false;
+            _logger.LogWarning("Switch reboot initiated by {ClientIP} (Save config: {SaveConfig})", clientIp, saveConfig);
                 
             try
             {
-                await _switchService.RebootSwitchAsync();
+                await _switchService.RebootSwitchAsync(saveConfig);
                 _logger.LogWarning("Switch reboot command sent successfully from {ClientIP}", clientIp);
                 
                 return Ok(new { success = true, message = "Switch reboot initiated" });
@@ -360,6 +361,554 @@ namespace TPLinkWebUI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to reboot switch from {ClientIP}: {ErrorMessage}", clientIp, ex.Message);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // System Management Endpoints
+
+        [HttpPost("system/name")]
+        public async Task<IActionResult> SetSystemName([FromBody] SystemNameRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting system name to: {SystemName}", request.SystemName);
+                
+            try
+            {
+                await _switchService.SetSystemNameAsync(request.SystemName);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("System name set successfully to {SystemName} in {ElapsedMs}ms", 
+                    request.SystemName, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"System name set to '{request.SystemName}'" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set system name after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("system/ip-config")]
+        public async Task<IActionResult> SetIpConfiguration([FromBody] IpConfigRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting IP configuration: DHCP={DhcpEnabled}, IP={IpAddress}, Mask={SubnetMask}, Gateway={Gateway}", 
+                request.DhcpEnabled, request.IpAddress, request.SubnetMask, request.Gateway);
+                
+            try
+            {
+                await _switchService.SetIpConfigurationAsync(request.DhcpEnabled, request.IpAddress, request.SubnetMask, request.Gateway);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("IP configuration set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "IP configuration updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set IP configuration after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("system/factory-reset")]
+        public async Task<IActionResult> FactoryReset()
+        {
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            _logger.LogWarning("Factory reset initiated by {ClientIP}", clientIp);
+                
+            try
+            {
+                await _switchService.FactoryResetAsync();
+                _logger.LogWarning("Factory reset command sent successfully from {ClientIP}", clientIp);
+                
+                return Ok(new { success = true, message = "Factory reset initiated" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initiate factory reset from {ClientIP}: {ErrorMessage}", clientIp, ex.Message);
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("system/save-config")]
+        public async Task<IActionResult> SaveConfiguration()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Saving configuration");
+                
+            try
+            {
+                await _switchService.SaveConfigurationAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Configuration saved successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Configuration saved successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to save configuration after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("system/led-control")]
+        public async Task<IActionResult> SetLedControl([FromBody] LedControlRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting LED control: {LedEnabled}", request.LedEnabled);
+                
+            try
+            {
+                await _switchService.SetLedControlAsync(request.LedEnabled);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("LED control set successfully to {LedEnabled} in {ElapsedMs}ms", 
+                    request.LedEnabled, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"LED {(request.LedEnabled ? "enabled" : "disabled")}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set LED control after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("system/user-account")]
+        public async Task<IActionResult> SetUserAccount([FromBody] UserAccountRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting user account for: {NewUsername}", request.NewUsername);
+                
+            try
+            {
+                await _switchService.SetUserAccountAsync(request.NewUsername, request.CurrentPassword, request.NewPassword, request.ConfirmPassword);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("User account set successfully for {NewUsername} in {ElapsedMs}ms", 
+                    request.NewUsername, stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "User account updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set user account after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // Port Management Extensions
+
+        [HttpPost("ports/clear-statistics")]
+        public async Task<IActionResult> ClearPortStatistics()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Clearing port statistics");
+                
+            try
+            {
+                await _switchService.ClearPortStatisticsAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port statistics cleared successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Port statistics cleared successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to clear port statistics after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // Advanced Features Endpoints
+
+        [HttpPost("mirroring/enable")]
+        public async Task<IActionResult> SetPortMirroringEnabled([FromBody] PortMirrorEnableRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting port mirroring: {Enabled}, Destination Port: {DestinationPort}", 
+                request.Enabled, request.MirrorDestinationPort);
+                
+            try
+            {
+                await _switchService.SetPortMirroringEnabledAsync(request.Enabled, request.MirrorDestinationPort);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port mirroring set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"Port mirroring {(request.Enabled ? "enabled" : "disabled")}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set port mirroring after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("mirroring/configure")]
+        public async Task<IActionResult> ConfigurePortMirroring([FromBody] PortMirrorConfigRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Configuring port mirroring: Source Ports: {SourcePorts}, Ingress: {IngressEnabled}, Egress: {EgressEnabled}", 
+                string.Join(",", request.SourcePorts), request.IngressEnabled, request.EgressEnabled);
+                
+            try
+            {
+                await _switchService.ConfigurePortMirroringAsync(request.SourcePorts, request.IngressEnabled, request.EgressEnabled);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port mirroring configured successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Port mirroring configured successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to configure port mirroring after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("trunking/configure")]
+        public async Task<IActionResult> SetPortTrunking([FromBody] PortTrunkRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting port trunking: Trunk ID: {TrunkId}, Member Ports: {MemberPorts}", 
+                request.TrunkId, string.Join(",", request.MemberPorts));
+                
+            try
+            {
+                await _switchService.SetPortTrunkingAsync(request.TrunkId, request.MemberPorts);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port trunking configured successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"Port trunking configured for LAG {request.TrunkId}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to configure port trunking after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("loop-prevention")]
+        public async Task<IActionResult> SetLoopPrevention([FromBody] LoopPreventionRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting loop prevention: {Enabled}", request.Enabled);
+                
+            try
+            {
+                await _switchService.SetLoopPreventionAsync(request.Enabled);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Loop prevention set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"Loop prevention {(request.Enabled ? "enabled" : "disabled")}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set loop prevention after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // QoS Endpoints
+
+        [HttpPost("qos/mode")]
+        public async Task<IActionResult> SetQosMode([FromBody] QosModeRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting QoS mode: {Mode}", request.Mode);
+                
+            try
+            {
+                await _switchService.SetQosModeAsync(request.Mode);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("QoS mode set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"QoS mode set to {request.Mode}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set QoS mode after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("qos/bandwidth-control")]
+        public async Task<IActionResult> SetBandwidthControl([FromBody] BandwidthControlRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting bandwidth control: Ports: {Ports}, Ingress: {IngressRate} Kbps, Egress: {EgressRate} Kbps", 
+                string.Join(",", request.Ports), request.IngressRate, request.EgressRate);
+                
+            try
+            {
+                await _switchService.SetBandwidthControlAsync(request.Ports, request.IngressRate, request.EgressRate);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Bandwidth control set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Bandwidth control configured successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set bandwidth control after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("qos/port-priority")]
+        public async Task<IActionResult> SetPortPriority([FromBody] PortPriorityRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting port priority: Ports: {Ports}, Priority: {Priority}", 
+                string.Join(",", request.Ports), request.Priority);
+                
+            try
+            {
+                await _switchService.SetPortPriorityAsync(request.Ports, request.Priority);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Port priority set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"Port priority set to {request.Priority}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set port priority after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("qos/storm-control")]
+        public async Task<IActionResult> SetStormControl([FromBody] StormControlRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting storm control: Ports: {Ports}, Broadcast: {BroadcastRate}, Multicast: {MulticastRate}, Unicast: {UnicastRate}", 
+                string.Join(",", request.Ports), request.BroadcastRate, request.MulticastRate, request.UnicastRate);
+                
+            try
+            {
+                await _switchService.SetStormControlAsync(request.Ports, request.BroadcastRate, request.MulticastRate, request.UnicastRate);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Storm control set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Storm control configured successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set storm control after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // IGMP Snooping Endpoint
+
+        [HttpPost("igmp-snooping")]
+        public async Task<IActionResult> SetIgmpSnooping([FromBody] IgmpSnoopingRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting IGMP snooping: {Enabled}", request.Enabled);
+                
+            try
+            {
+                await _switchService.SetIgmpSnoopingAsync(request.Enabled);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("IGMP snooping set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"IGMP snooping {(request.Enabled ? "enabled" : "disabled")}" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set IGMP snooping after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // PoE Management Endpoints
+
+        [HttpPost("poe/global-config")]
+        public async Task<IActionResult> SetPoeGlobalConfig([FromBody] PoeGlobalConfigRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting PoE global config: Power Limit: {PowerLimit}W", request.PowerLimit);
+                
+            try
+            {
+                await _switchService.SetPoeGlobalConfigAsync(request.PowerLimit);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("PoE global config set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = $"PoE power limit set to {request.PowerLimit}W" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set PoE global config after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("poe/port-config")]
+        public async Task<IActionResult> SetPoePortConfig([FromBody] PoePortConfigRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Setting PoE port config: Ports: {Ports}, State: {State}, Priority: {Priority}, PowerLimit: {PowerLimit}", 
+                string.Join(",", request.Ports), request.State, request.Priority, request.PowerLimit);
+                
+            try
+            {
+                await _switchService.SetPoePortConfigAsync(request.Ports, (int)request.State, (int)request.Priority, (int)request.PowerLimit, request.ManualPowerLimit);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("PoE port config set successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "PoE port configuration updated successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to set PoE port config after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        // Configuration Management Endpoints
+
+        [HttpPost("config/backup")]
+        public async Task<IActionResult> BackupConfiguration()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Backing up configuration");
+                
+            try
+            {
+                var configStream = await _switchService.BackupConfigurationAsync();
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Configuration backup completed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                var fileName = $"switch-config-{DateTime.Now:yyyyMMdd-HHmmss}.cfg";
+                return File(configStream, "application/octet-stream", fileName);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to backup configuration after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("config/restore")]
+        public async Task<IActionResult> RestoreConfiguration([FromForm] ConfigRestoreRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Restoring configuration from file: {FileName}", request.ConfigFile.FileName);
+                
+            try
+            {
+                using var stream = request.ConfigFile.OpenReadStream();
+                await _switchService.RestoreConfigurationAsync(stream, request.ConfigFile.FileName);
+                stopwatch.Stop();
+                
+                _logger.LogInformation("Configuration restored successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Configuration restored successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to restore configuration after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost("firmware/upgrade")]
+        public async Task<IActionResult> UpgradeFirmware([FromForm] FirmwareUpgradeRequest request)
+        {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogWarning("Firmware upgrade initiated with file: {FileName}", request.FirmwareFile.FileName);
+                
+            try
+            {
+                using var stream = request.FirmwareFile.OpenReadStream();
+                await _switchService.UpgradeFirmwareAsync(stream, request.FirmwareFile.FileName);
+                stopwatch.Stop();
+                
+                _logger.LogWarning("Firmware upgrade completed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
+                
+                return Ok(new { success = true, message = "Firmware upgrade initiated successfully" });
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to upgrade firmware after {ElapsedMs}ms: {ErrorMessage}", 
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+                
                 return BadRequest(new { success = false, message = ex.Message });
             }
         }
