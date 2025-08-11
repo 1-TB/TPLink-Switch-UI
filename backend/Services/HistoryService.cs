@@ -17,7 +17,7 @@ namespace TPLinkWebUI.Services
         }
 
         // Port History Methods
-        public async Task LogPortInfoAsync(List<PortInfo> currentPorts, List<PortInfo>? previousPorts = null, string changeType = "PERIODIC_SNAPSHOT")
+        public async Task LogPortInfoAsync(List<PortInfo> currentPorts, List<PortInfo>? previousPorts = null, string changeType = "PERIODIC_SNAPSHOT", int? userId = null, string? username = null)
         {
             try
             {
@@ -28,6 +28,8 @@ namespace TPLinkWebUI.Services
                     var previousPort = previousPorts?.FirstOrDefault(p => p.PortNumber == port.PortNumber);
                     string? previousValue = null;
                     string? newValue = null;
+                    TimeSpan? downtimeDuration = null;
+                    DateTime? lastUpTime = null;
 
                     if (previousPort != null && (changeType == "STATUS_CHANGE" || changeType == "CONFIG_CHANGE"))
                     {
@@ -36,10 +38,39 @@ namespace TPLinkWebUI.Services
                         {
                             previousValue = string.Join(", ", changes.Select(c => $"{c.Field}: {c.OldValue}"));
                             newValue = string.Join(", ", changes.Select(c => $"{c.Field}: {c.NewValue}"));
+                            
+                            // Calculate downtime if port is coming back up
+                            if (!previousPort.IsConnected && port.IsConnected)
+                            {
+                                var lastEntry = await _context.PortHistory
+                                    .Where(h => h.PortNumber == port.PortNumber && !h.IsConnected)
+                                    .OrderByDescending(h => h.Timestamp)
+                                    .FirstOrDefaultAsync();
+                                
+                                if (lastEntry != null)
+                                {
+                                    downtimeDuration = DateTime.UtcNow - lastEntry.Timestamp;
+                                }
+                            }
                         }
                     }
 
-                    entries.Add(PortHistoryEntry.FromPortInfo(port, changeType, previousValue, newValue));
+                    string? notes = null;
+                    if (downtimeDuration.HasValue)
+                    {
+                        var duration = downtimeDuration.Value;
+                        string formattedDuration;
+                        if (duration.TotalDays >= 1)
+                            formattedDuration = $"{(int)duration.TotalDays} days, {duration.Hours} hours";
+                        else if (duration.TotalHours >= 1)
+                            formattedDuration = $"{(int)duration.TotalHours} hours, {duration.Minutes} minutes";
+                        else
+                            formattedDuration = $"{(int)duration.TotalMinutes} minutes";
+                        
+                        notes = $"Port {port.PortNumber} back up after {formattedDuration}";
+                    }
+
+                    entries.Add(PortHistoryEntry.FromPortInfo(port, changeType, previousValue, newValue, notes, userId, username, downtimeDuration, lastUpTime));
                 }
 
                 _context.PortHistory.AddRange(entries);
@@ -53,7 +84,7 @@ namespace TPLinkWebUI.Services
             }
         }
 
-        public async Task LogPortConfigChangeAsync(int portNumber, PortInfo oldConfig, PortInfo newConfig)
+        public async Task LogPortConfigChangeAsync(int portNumber, PortInfo oldConfig, PortInfo newConfig, int? userId = null, string? username = null)
         {
             try
             {
@@ -64,12 +95,12 @@ namespace TPLinkWebUI.Services
                 var newValue = string.Join(", ", changes.Select(c => $"{c.Field}: {c.NewValue}"));
 
                 var entry = PortHistoryEntry.FromPortInfo(newConfig, "CONFIG_CHANGE", previousValue, newValue,
-                    $"Port {portNumber} configuration changed");
+                    $"Port {portNumber} configuration changed by {username ?? "System"}", userId, username);
 
                 _context.PortHistory.Add(entry);
                 await _context.SaveChangesAsync();
                 
-                _logger.LogInformation("Logged port {PortNumber} configuration change", portNumber);
+                _logger.LogInformation("Logged port {PortNumber} configuration change by user {Username}", portNumber, username);
             }
             catch (Exception ex)
             {
@@ -155,6 +186,126 @@ namespace TPLinkWebUI.Services
 
             if (portNumber.HasValue)
                 query = query.Where(h => h.PortNumber == portNumber.Value);
+
+            if (since.HasValue)
+                query = query.Where(h => h.Timestamp >= since.Value);
+
+            return await query
+                .OrderByDescending(h => h.Timestamp)
+                .Take(limit)
+                .ToListAsync();
+        }
+
+        // Switch Connectivity History Methods
+        public async Task LogSwitchConnectivityAsync(bool isReachable, string? ipAddress, int? responseTimeMs = null, string? errorMessage = null)
+        {
+            try
+            {
+                TimeSpan? downtimeDuration = null;
+                
+                if (isReachable)
+                {
+                    // Check if switch was previously unreachable and calculate downtime
+                    var lastUnreachableEntry = await _context.SwitchConnectivityHistory
+                        .Where(h => !h.IsReachable)
+                        .OrderByDescending(h => h.Timestamp)
+                        .FirstOrDefaultAsync();
+                    
+                    if (lastUnreachableEntry != null)
+                    {
+                        downtimeDuration = DateTime.UtcNow - lastUnreachableEntry.Timestamp;
+                    }
+                }
+                
+                var entry = isReachable 
+                    ? SwitchConnectivityHistoryEntry.CreateReachable(ipAddress, responseTimeMs)
+                    : SwitchConnectivityHistoryEntry.CreateUnreachable(ipAddress, errorMessage, downtimeDuration);
+
+                _context.SwitchConnectivityHistory.Add(entry);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Logged switch connectivity status: {Status}", isReachable ? "Reachable" : "Unreachable");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to log switch connectivity");
+            }
+        }
+
+        public async Task<List<SwitchConnectivityHistoryEntry>> GetSwitchConnectivityHistoryAsync(DateTime? since = null, int limit = 100)
+        {
+            var query = _context.SwitchConnectivityHistory.AsQueryable();
+
+            if (since.HasValue)
+                query = query.Where(h => h.Timestamp >= since.Value);
+
+            return await query
+                .OrderByDescending(h => h.Timestamp)
+                .Take(limit)
+                .ToListAsync();
+        }
+
+        // Port Statistics History Methods
+        public async Task LogPortStatisticsAsync(Dictionary<int, PortStatistics> portStatistics, string changeType = "STATISTICS_UPDATE")
+        {
+            try
+            {
+                var entries = portStatistics.Select(kvp => 
+                    PortStatisticsHistoryEntry.FromPortStatistics(kvp.Key, kvp.Value, changeType)
+                ).ToList();
+
+                _context.PortStatisticsHistory.AddRange(entries);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Logged statistics for {Count} ports", entries.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to log port statistics");
+            }
+        }
+
+        public async Task<List<PortStatisticsHistoryEntry>> GetPortStatisticsHistoryAsync(int? portNumber = null, DateTime? since = null, int limit = 100)
+        {
+            var query = _context.PortStatisticsHistory.AsQueryable();
+
+            if (portNumber.HasValue)
+                query = query.Where(h => h.PortNumber == portNumber.Value);
+
+            if (since.HasValue)
+                query = query.Where(h => h.Timestamp >= since.Value);
+
+            return await query
+                .OrderByDescending(h => h.Timestamp)
+                .Take(limit)
+                .ToListAsync();
+        }
+
+        // User Activity History Methods
+        public async Task LogUserActivityAsync(UserActivityHistoryEntry activity)
+        {
+            try
+            {
+                _context.UserActivityHistory.Add(activity);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Logged user activity: {ActionType} by {Username}", activity.ActionType, activity.Username);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to log user activity");
+            }
+        }
+
+        public async Task<List<UserActivityHistoryEntry>> GetUserActivityHistoryAsync(int? userId = null, string? username = null, DateTime? since = null, int limit = 100)
+        {
+            var query = _context.UserActivityHistory.AsQueryable();
+
+            if (userId.HasValue)
+                query = query.Where(h => h.UserId == userId.Value);
+            
+            if (!string.IsNullOrEmpty(username))
+                query = query.Where(h => h.Username == username);
 
             if (since.HasValue)
                 query = query.Where(h => h.Timestamp >= since.Value);

@@ -14,6 +14,9 @@ namespace TPLinkWebUI.Data
         public DbSet<CableDiagnosticHistoryEntry> CableDiagnosticHistory { get; set; }
         public DbSet<SystemInfoHistoryEntry> SystemInfoHistory { get; set; }
         public DbSet<VlanHistoryEntry> VlanHistory { get; set; }
+        public DbSet<SwitchConnectivityHistoryEntry> SwitchConnectivityHistory { get; set; }
+        public DbSet<PortStatisticsHistoryEntry> PortStatisticsHistory { get; set; }
+        public DbSet<UserActivityHistoryEntry> UserActivityHistory { get; set; }
         
         // User management
         public DbSet<User> Users { get; set; }
@@ -30,6 +33,7 @@ namespace TPLinkWebUI.Data
                 entity.HasIndex(e => e.PortNumber);
                 entity.HasIndex(e => e.Timestamp);
                 entity.HasIndex(e => e.ChangeType);
+                entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => new { e.PortNumber, e.Timestamp });
             });
 
@@ -59,6 +63,36 @@ namespace TPLinkWebUI.Data
                 entity.HasIndex(e => e.Timestamp);
                 entity.HasIndex(e => e.ChangeType);
                 entity.HasIndex(e => new { e.VlanId, e.Timestamp });
+            });
+
+            // Switch Connectivity History configuration
+            modelBuilder.Entity<SwitchConnectivityHistoryEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.Timestamp);
+                entity.HasIndex(e => e.IsReachable);
+                entity.HasIndex(e => e.IpAddress);
+            });
+
+            // Port Statistics History configuration
+            modelBuilder.Entity<PortStatisticsHistoryEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.PortNumber);
+                entity.HasIndex(e => e.Timestamp);
+                entity.HasIndex(e => e.ChangeType);
+                entity.HasIndex(e => new { e.PortNumber, e.Timestamp });
+            });
+
+            // User Activity History configuration
+            modelBuilder.Entity<UserActivityHistoryEntry>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Username);
+                entity.HasIndex(e => e.Timestamp);
+                entity.HasIndex(e => e.ActionType);
+                entity.HasIndex(e => e.IsSuccess);
             });
 
             // User configuration

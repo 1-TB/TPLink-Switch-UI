@@ -31,11 +31,32 @@ namespace TPLinkWebUI.Models.History
         
         public string? Notes { get; set; }
         
+        // Enhanced tracking
+        public int? UserId { get; set; }
+        
+        public string? Username { get; set; }
+        
+        public TimeSpan? DowntimeDuration { get; set; }
+        
+        public DateTime? LastUpTime { get; set; }
+        
         public bool IsEnabled => Status == "Enabled";
         
         public bool IsConnected => SpeedActual != "Link Down";
         
-        public static PortHistoryEntry FromPortInfo(PortInfo portInfo, string changeType, string? previousValue = null, string? newValue = null, string? notes = null)
+        public string GetFormattedDowntime()
+        {
+            if (!DowntimeDuration.HasValue) return "";
+            
+            var duration = DowntimeDuration.Value;
+            if (duration.TotalDays >= 1)
+                return $"{(int)duration.TotalDays} days, {duration.Hours} hours";
+            if (duration.TotalHours >= 1)
+                return $"{(int)duration.TotalHours} hours, {duration.Minutes} minutes";
+            return $"{(int)duration.TotalMinutes} minutes";
+        }
+        
+        public static PortHistoryEntry FromPortInfo(PortInfo portInfo, string changeType, string? previousValue = null, string? newValue = null, string? notes = null, int? userId = null, string? username = null, TimeSpan? downtimeDuration = null, DateTime? lastUpTime = null)
         {
             return new PortHistoryEntry
             {
@@ -50,7 +71,11 @@ namespace TPLinkWebUI.Models.History
                 ChangeType = changeType,
                 PreviousValue = previousValue,
                 NewValue = newValue,
-                Notes = notes
+                Notes = notes,
+                UserId = userId,
+                Username = username,
+                DowntimeDuration = downtimeDuration,
+                LastUpTime = lastUpTime
             };
         }
     }
